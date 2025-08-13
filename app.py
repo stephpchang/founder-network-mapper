@@ -10,7 +10,7 @@ from pyvis.network import Network
 # ---------------- App config ----------------
 st.set_page_config(page_title="Founder Network Mapper", layout="wide")
 st.title("Founder Network Mapper")
-st.caption("Demo mode with USV network, reliable Focus by hops, Node Inspector, shared-investor insights, warm-intro paths.")
+st.caption("USV demo network • reliable Focus by hops • vivid Warm Intro paths • Node Inspector • shared‑investor insights")
 
 # =================================================
 # DEMO DATA (USV + partners + representative portfolio)
@@ -125,7 +125,7 @@ DEMO_GRAPH = {
 }
 
 # =================================================
-# Optional Google CSE (kept for future; not required here)
+# (Optional) Google CSE helper — not used by demo, but kept for later
 # =================================================
 @st.cache_data(show_spinner=False, ttl=86400)
 def serp(q: str, num: int = 5):
@@ -159,7 +159,7 @@ def save_graph(G, meta, sources):
     st.session_state.SOURCES = sources
     st.session_state.LABEL2ID = {f"{meta[n]['label']} ({meta[n]['type']})": n for n in G.nodes()}
     if "PATH" not in st.session_state:
-        st.session_state.PATH = []  # store the last computed path as a list of node ids
+        st.session_state.PATH = []  # store last computed path (list of node ids)
 
 def load_graph():
     return (st.session_state.get("G"), st.session_state.get("META"),
@@ -169,20 +169,56 @@ def set_path(nodes: List[str]):
     st.session_state.PATH = list(nodes or [])
 
 # =================================================
-# Visualization
+# Visualization (with vivid path highlighting)
 # =================================================
-def render_pyvis(G, meta, height="700px", highlight_nodes=None, highlight_edges=None):
+def render_pyvis(
+    G,
+    meta,
+    height="700px",
+    highlight_nodes=None,
+    highlight_edges=None,
+    path_start=None,
+    path_end=None,
+):
     net = Network(height=height, width="100%", bgcolor="#ffffff", font_color="#222")
     net.barnes_hut(spring_length=150, damping=0.85)
+
     COLORS = {"company":"#16a34a","founder":"#2563eb","investor":"#f97316","partner":"#7c3aed"}
-    hn = set(highlight_nodes or []); he = set(highlight_edges or [])
+    hn = set(highlight_nodes or [])
+    he = set(highlight_edges or [])
+
     for nid in G.nodes():
-        a = meta[nid]; color = COLORS.get(a["type"], "#64748b")
-        url = a.get("url","")
+        a = meta[nid]
+        base_color = COLORS.get(a["type"], "#64748b")
+        url = a.get("url", "")
+
+        # Path-specific coloring
+        if nid == path_start:
+            node_color = "#22c55e"   # start: green
+            border = 4
+            size = 32
+        elif nid == path_end:
+            node_color = "#ef4444"   # end: red
+            border = 4
+            size = 32
+        elif nid in hn:
+            node_color = "#f59e0b"   # intermediary on path: amber
+            border = 3
+            size = 26
+        else:
+            node_color = base_color
+            border = 1
+            size = 18
+
         title = f"{a['type'].title()}: {a['label']}" + (f"<br><a href='{url}' target='_blank'>{url}</a>" if url else "")
-        net.add_node(nid, label=a["label"], color=color, title=title, borderWidth=(3 if nid in hn else 1))
+        net.add_node(nid, label=a["label"], color=node_color, title=title, borderWidth=border, size=size)
+
     for u, v, d in G.edges(data=True):
-        net.add_edge(u, v, title=d.get("relation",""), width=(3 if ((u,v) in he or (v,u) in he) else 1))
+        on_path = ((u, v) in he) or ((v, u) in he)
+        width = 4 if on_path else 1
+        color = "#ef4444" if on_path else None  # red path edges
+        net.add_edge(u, v, title=d.get("relation", ""), width=width, color=color)
+
     net.toggle_physics(True)
     return net.generate_html("graph.html")
 
@@ -248,6 +284,7 @@ if H_base.number_of_nodes() == 0:
 # Compute shortest path on base view and persist it
 # =================================================
 def shortest_path_safe(Gsub, src, dst) -> List[str]:
+    if not src or not dst: return []
     if src not in Gsub or dst not in Gsub:
         return []
     try:
@@ -261,6 +298,7 @@ if find_path and start_display != "(pick)" and end_display != "(pick)":
     if path_nodes:
         set_path(path_nodes)
     else:
+        set_path([])
         st.warning("No connection found in the current filtered view. Try widening filters or turning off focus.")
 elif warm_to_usv and start_display != "(pick)":
     sid = LABEL2ID.get(start_display)
@@ -269,6 +307,7 @@ elif warm_to_usv and start_display != "(pick)":
     if path_nodes:
         set_path(path_nodes)
     else:
+        set_path([])
         st.warning("No warm intro path to USV in the current filtered view.")
 
 # =================================================
@@ -312,9 +351,18 @@ if stored_path:
         st.info("A saved path exists, but some nodes are hidden by current focus/filters. Clear focus or widen filters to see the full path.")
 
 # =================================================
-# Render graph
+# Render graph (with start/end emphasis if we have a stored path)
 # =================================================
-html = render_pyvis(H, META, highlight_nodes=highlight_nodes, highlight_edges=highlight_edges)
+path_start_id = stored_path[0] if stored_path else None
+path_end_id   = stored_path[-1] if stored_path else None
+
+html = render_pyvis(
+    H, META,
+    highlight_nodes=highlight_nodes,
+    highlight_edges=highlight_edges,
+    path_start=path_start_id,
+    path_end=path_end_id,
+)
 st.components.v1.html(html, height=720, scrolling=True)
 
 # =================================================
@@ -361,6 +409,7 @@ if top:
     for n in top:
         st.write(f"- {META[n]['label']} ({META[n]['type']}) — {deg[n]} | {bet[n]:.3f}")
 
+# Shared investors between companies (fast signal)
 companies = [n for n in H.nodes() if META[n]["type"] == "company"]
 inv_by_company = {c: {nb for nb in H.neighbors(c) if META[nb]["type"] == "investor"} for c in companies}
 pairs = []
@@ -374,6 +423,30 @@ if pairs:
     st.write("Shared investors between companies:")
     for a, b, lst in pairs[:8]:
         st.write(f"- {a} ↔ {b}: " + ", ".join(lst))
+
+# =================================================
+# Warm Intro Action panel (turn path into steps)
+# =================================================
+stored_path = st.session_state.get("PATH", [])
+if stored_path:
+    st.markdown("### Warm Intro Plan")
+    steps = [f"{META[n]['label']} `{META[n]['type']}`" for n in stored_path]
+    st.write(" → ".join(steps))
+
+    if len(stored_path) >= 3:
+        intermediaries = stored_path[1:-1]
+        st.write("**Intro candidates (intermediaries on path):**")
+        local_deg = {n: H.degree(n) for n in H.nodes()}
+        local_bet = nx.betweenness_centrality(H) if H.number_of_nodes() < 200 else {n: 0 for n in H.nodes()}
+        ranked = sorted(intermediaries, key=lambda n: (local_deg.get(n,0), local_bet.get(n,0.0)), reverse=True)
+        for n in ranked:
+            st.write(f"- {META[n]['label']} ({META[n]['type']}) — deg {local_deg.get(n,0)}, btw {local_bet.get(n,0.0):.3f}")
+
+    src = META[stored_path[0]]["label"]
+    dst = META[stored_path[-1]]["label"]
+    st.write("**Suggested outreach ask (copy/paste):**")
+    ask = f"Quick favor: could you intro me to {dst}? I’m mapping warm paths and saw you’re a solid connector along the way."
+    st.code(ask, language="text")
 
 # =================================================
 # Export
