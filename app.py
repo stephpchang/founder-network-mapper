@@ -1,3 +1,4 @@
+# founder_mapper_app.py
 import os
 import re
 import json
@@ -16,11 +17,10 @@ from pyvis.network import Network
 # -------------------------------------------------
 st.set_page_config(page_title="Founder Network Mapper", layout="wide")
 st.title("Founder Network Mapper")
-st.caption("Demo-friendly: public-web signals only (optional), with curated Demo Mode")
+st.caption("Demo-friendly: public-web signals only (optional), with curated Demo Mode, Focus, and Warm Intro Paths")
 
 # -------------------------------------------------
 # Demo data (curated so you can show functionality without paid APIs)
-# Nodes are {id, label, type, url}; Edges are {u, v, relation}
 # -------------------------------------------------
 DEMO_GRAPH = {
     "nodes": [
@@ -57,7 +57,6 @@ DEMO_GRAPH = {
         {"u": "investor::iconiq",        "v": "company::figma",     "relation": "Investor"},
         {"u": "investor::index",         "v": "company::plaid",     "relation": "Investor"},
     ],
-    # Optional: per-node sources (will render under Sources)
     "sources": {
         "company::anthropic": [
             "https://www.anthropic.com/",
@@ -96,14 +95,9 @@ def serp(q: str, num: int = 5) -> List[Dict[str, str]]:
             "link": "https://developers.google.com/custom-search/v1/overview",
         }]
     items = resp.json().get("items") or []
-    out = []
-    for it in items[:num]:
-        out.append({
-            "title": it.get("title",""),
-            "snippet": it.get("snippet",""),
-            "link": it.get("link",""),
-        })
-    return out
+    return [{"title": it.get("title",""),
+             "snippet": it.get("snippet",""),
+             "link": it.get("link","")} for it in items[:num]]
 
 # -------------------------------------------------
 # Lightweight parsing helpers (heuristics)
@@ -173,7 +167,7 @@ def extract_investors(snips: List[Dict[str, str]]) -> List[Tuple[str,str]]:
     return uniq[:20]
 
 # -------------------------------------------------
-# Build graph
+# Build graphs
 # -------------------------------------------------
 def build_graph_from_demo() -> Tuple[nx.Graph, Dict[str, Dict[str,Any]], Dict[str, Set[str]]]:
     G = nx.Graph()
@@ -235,17 +229,14 @@ def build_graph_from_serp(companies: List[str]) -> Tuple[nx.Graph, Dict[str, Dic
 # Insights
 # -------------------------------------------------
 def compute_insights(G: nx.Graph, meta: Dict[str, Dict[str,Any]]) -> Dict[str, Any]:
-    # Top connectors by degree (exclude companies if you want)
     deg = {nid: G.degree(nid) for nid in G.nodes()}
     top_nodes = sorted(deg.items(), key=lambda kv: kv[1], reverse=True)[:5]
     top = [{"label": meta[n]["label"], "type": meta[n]["type"], "degree": d} for n, d in top_nodes]
 
-    # Shared investors across companies
     comp_investors: Dict[str, Set[str]] = defaultdict(set)
     for nid, attrs in meta.items():
         if attrs["type"] != "investor":
             continue
-        # investor connected companies
         for nb in G.neighbors(nid):
             if meta[nb]["type"] == "company":
                 comp_investors[nb].add(nid)
@@ -265,22 +256,27 @@ def compute_insights(G: nx.Graph, meta: Dict[str, Dict[str,Any]]) -> Dict[str, A
     return {"top_connectors": top, "shared_investors": shared_list}
 
 # -------------------------------------------------
-# Render with PyVis
+# Viz
 # -------------------------------------------------
-def render_pyvis(G: nx.Graph, meta: Dict[str, Dict[str,Any]], height: str = "700px") -> str:
+def render_pyvis(G: nx.Graph, meta: Dict[str, Dict[str,Any]], height: str = "700px",
+                 highlight_nodes: Set[str] | None = None, highlight_edges: Set[Tuple[str,str]] | None = None) -> str:
     net = Network(height=height, width="100%", bgcolor="#ffffff", font_color="#222")
     net.barnes_hut(spring_length=150, damping=0.85)
     COLORS = {"company":"#16a34a", "founder":"#2563eb", "investor":"#f97316"}  # green, blue, orange
     for nid, attrs in meta.items():
+        if nid not in G:
+            continue
         t = attrs["type"]
         label = attrs["label"]
         url = attrs.get("url") or ""
         color = COLORS.get(t, "#64748b")
         title = f"{t.title()}: {label}" + (f"<br><a href='{url}' target='_blank'>{url}</a>" if url else "")
-        net.add_node(nid, label=label, color=color, title=title)
+        border = 3 if (highlight_nodes and nid in highlight_nodes) else 1
+        net.add_node(nid, label=label, color=color, title=title, borderWidth=border)
     for u, v, d in G.edges(data=True):
         rel = d.get("relation","")
-        net.add_edge(u, v, title=rel)
+        width = 3 if (highlight_edges and ((u,v) in highlight_edges or (v,u) in highlight_edges)) else 1
+        net.add_edge(u, v, title=rel, width=width)
     net.toggle_physics(True)
     return net.generate_html("graph.html")
 
@@ -301,23 +297,17 @@ if submitted:
         with st.spinner("Building graph..."):
             if demo_mode:
                 G, meta, sources_by_node = build_graph_from_demo()
-                # narrow to typed companies if user provided fewer than the demo set
                 if companies:
                     keep = {f"company::{c.lower()}" for c in companies}
-                    # also keep their neighbors
                     to_keep = set()
                     for nid in G.nodes():
-                        if nid in keep or (any(nb in keep for nb in G.neighbors(nid))):
+                        if nid in keep or any(nb in keep for nb in G.neighbors(nid)):
                             to_keep.add(nid)
-                    H = G.subgraph(to_keep).copy()
-                    meta = {nid: meta[nid] for nid in H.nodes()}
-                    # trim sources
-                    sources_by_node = {nid: set(sources_by_node.get(nid, set())) for nid in H.nodes()}
-                    G = H
-                # optional augmentation from SERP (founders/investors)
+                    G = G.subgraph(to_keep).copy()
+                    meta = {nid: meta[nid] for nid in G.nodes()}
+                    sources_by_node = {nid: set(sources_by_node.get(nid, set())) for nid in G.nodes()}
                 if augment:
                     G2, meta2, src2 = build_graph_from_serp(companies)
-                    # merge G2 into G
                     for nid, attrs in meta2.items():
                         if nid not in meta:
                             meta[nid] = attrs
@@ -326,32 +316,79 @@ if submitted:
                         if not G.has_edge(u, v):
                             G.add_edge(u, v, **d)
                     for nid, urls in src2.items():
-                        if nid not in sources_by_node:
-                            sources_by_node[nid] = set()
-                        for u in urls:
-                            sources_by_node[nid].add(u)
+                        sources_by_node.setdefault(nid, set()).update(urls)
             else:
                 G, meta, sources_by_node = build_graph_from_serp(companies)
 
-        # Filters
+        # ---------- Sidebar controls ----------
         st.sidebar.header("Filters")
         typ_filter = st.sidebar.multiselect("Node types", ["founder","company","investor"], default=["founder","company","investor"])
         query = st.sidebar.text_input("Search name contains", value="")
-        query_l = query.lower().strip()
 
+        # Focus on node (ego network)
+        st.sidebar.header("Focus")
+        all_labels = {nid: meta[nid]["label"] for nid in G.nodes()}
+        label_to_id = {v: k for k, v in all_labels.items()}
+        focus_label = st.sidebar.selectbox("Focus on node", ["(none)"] + sorted(all_labels.values()), index=0)
+        focus_depth = st.sidebar.slider("Depth (hops)", min_value=1, max_value=2, value=1)
+        apply_focus = st.sidebar.checkbox("Apply focus", value=False)
+
+        # Warm intro path
+        st.sidebar.header("Warm Intro Path")
+        start_label = st.sidebar.selectbox("From", ["(pick)"] + sorted(all_labels.values()), index=0, key="path_from")
+        end_label   = st.sidebar.selectbox("To",   ["(pick)"] + sorted(all_labels.values()), index=0, key="path_to")
+        find_path = st.sidebar.button("Find shortest path")
+
+        # ---------- Filtering ----------
+        query_l = (query or "").lower().strip()
         visible = []
         for nid, attrs in meta.items():
+            if nid not in G: 
+                continue
             if attrs["type"] not in typ_filter: 
                 continue
             if query_l and query_l not in attrs["label"].lower():
                 continue
             visible.append(nid)
-
         H = G.subgraph(visible).copy()
 
-        # Render
-        html = render_pyvis(H, {nid: meta[nid] for nid in H.nodes()})
+        # Apply focus (ego network)
+        highlighted_nodes: Set[str] = set()
+        highlighted_edges: Set[Tuple[str,str]] = set()
+        if apply_focus and focus_label != "(none)":
+            fid = label_to_id.get(focus_label)
+            if fid in H:
+                ego_nodes = nx.ego_graph(H, fid, radius=focus_depth).nodes()
+                H = H.subgraph(list(ego_nodes)).copy()
+                highlighted_nodes = set(H.nodes())
+            else:
+                st.sidebar.warning("Focused node is filtered out. Clear filters or pick another node.")
+
+        # Find warm intro path (shortest path)
+        path_nodes: List[str] = []
+        if find_path and start_label != "(pick)" and end_label != "(pick)":
+            sid = label_to_id.get(start_label)
+            tid = label_to_id.get(end_label)
+            if sid in H and tid in H:
+                try:
+                    path_nodes = nx.shortest_path(H, source=sid, target=tid)
+                    # collect edges on path
+                    for u, v in zip(path_nodes, path_nodes[1:]):
+                        highlighted_edges.add((u, v))
+                    highlighted_nodes.update(path_nodes)
+                except nx.NetworkXNoPath:
+                    st.warning("No connection found between those nodes in the current view.")
+            else:
+                st.warning("One or both selected nodes are filtered out. Adjust filters or focus.")
+
+        # ---------- Render main graph ----------
+        html = render_pyvis(H, {nid: meta[nid] for nid in H.nodes()}, highlight_nodes=highlighted_nodes, highlight_edges=highlighted_edges)
         st.components.v1.html(html, height=720, scrolling=True)
+
+        # Path explanation
+        if path_nodes:
+            st.markdown("### Warm Intro Path")
+            st.write(" → ".join(meta[n]["label"] for n in path_nodes))
 
         # Insights
         st.markdown("### Insights")
@@ -368,15 +405,16 @@ if submitted:
                 a, b = item["companies"]
                 st.write(f"- {a} ↔ {b}: " + ", ".join(item["shared_investors"][:6]))
 
-        # Sources panel
+        # Sources
         st.markdown("### Sources")
         for nid in H.nodes():
-            if not sources_by_node.get(nid): 
+            urls = sorted(list(sources_by_node.get(nid, [])))
+            if not urls:
                 continue
             label = meta[nid]["label"]
             ntype = meta[nid]["type"]
             st.markdown(f"**{label}**  <sub>`{ntype}`</sub>", unsafe_allow_html=True)
-            for u in sorted(sources_by_node[nid]):
+            for u in urls:
                 st.write(f"- [{urlparse(u).netloc}]({u})")
 
         # Export JSON
@@ -392,4 +430,4 @@ if submitted:
 else:
     st.info("Toggle **Demo Mode** to show functionality instantly, or type up to 5 company names and build the network from public web snippets.")
 
-st.caption("Note: Demo mode uses curated sample data. Web-augmented mode uses light heuristics from public sources.")
+st.caption("Note: Demo mode uses curated sample data. Web-augmented mode uses heuristics from public sources.")
