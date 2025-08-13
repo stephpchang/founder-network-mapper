@@ -10,7 +10,7 @@ from pyvis.network import Network
 # ---------------- App config ----------------
 st.set_page_config(page_title="Founder Network Mapper", layout="wide")
 st.title("Founder Network Mapper")
-st.caption("USV demo network • reliable Focus by hops • vivid Warm Intro paths • Node Inspector • shared‑investor insights")
+st.caption("USV demo network • vivid Warm Intro paths • Focus by hops • Node Inspector • Overlap Scout")
 
 # =================================================
 # DEMO DATA (USV + partners + representative portfolio)
@@ -59,7 +59,7 @@ DEMO_GRAPH = {
         {"id":"founder::alexander_ljung","label":"Alexander Ljung","type":"founder","url":"https://en.wikipedia.org/wiki/SoundCloud"},
         {"id":"founder::eric_wahlforss","label":"Eric Wahlforss","type":"founder","url":"https://en.wikipedia.org/wiki/SoundCloud"},
 
-        # extra investors for density
+        # Extra investors for density
         {"id":"investor::sequoia","label":"Sequoia Capital","type":"investor","url":"https://www.sequoiacap.com/"},
         {"id":"investor::a16z","label":"Andreessen Horowitz","type":"investor","url":"https://a16z.com/"},
         {"id":"investor::iconiq","label":"ICONIQ Capital","type":"investor","url":"https://www.iconiqcapital.com/"},
@@ -159,7 +159,7 @@ def save_graph(G, meta, sources):
     st.session_state.SOURCES = sources
     st.session_state.LABEL2ID = {f"{meta[n]['label']} ({meta[n]['type']})": n for n in G.nodes()}
     if "PATH" not in st.session_state:
-        st.session_state.PATH = []  # store last computed path (list of node ids)
+        st.session_state.PATH = []  # last computed path (list of node ids)
 
 def load_graph():
     return (st.session_state.get("G"), st.session_state.get("META"),
@@ -169,7 +169,7 @@ def set_path(nodes: List[str]):
     st.session_state.PATH = list(nodes or [])
 
 # =================================================
-# Visualization (with vivid path highlighting)
+# Visualization (vivid path highlighting + dim non-path)
 # =================================================
 def render_pyvis(
     G,
@@ -179,45 +179,51 @@ def render_pyvis(
     highlight_edges=None,
     path_start=None,
     path_end=None,
+    path_nodes=None,
 ):
+    hn = set(highlight_nodes or [])
+    he = set(highlight_edges or [])
+    pnodes = list(path_nodes or [])
+    pset = set(pnodes)
+
     net = Network(height=height, width="100%", bgcolor="#ffffff", font_color="#222")
     net.barnes_hut(spring_length=150, damping=0.85)
 
-    COLORS = {"company":"#16a34a","founder":"#2563eb","investor":"#f97316","partner":"#7c3aed"}
-    hn = set(highlight_nodes or [])
-    he = set(highlight_edges or [])
+    BASE = {"company":"#16a34a","founder":"#2563eb","investor":"#f97316","partner":"#7c3aed"}
+    GREY = "#CBD5E1"   # dimmed nodes/edges
+    PATH_EDGE = "#ef4444"
 
     for nid in G.nodes():
         a = meta[nid]
-        base_color = COLORS.get(a["type"], "#64748b")
-        url = a.get("url", "")
+        url = a.get("url","")
+        base_color = BASE.get(a["type"], "#64748b")
 
-        # Path-specific coloring
         if nid == path_start:
-            node_color = "#22c55e"   # start: green
-            border = 4
-            size = 32
+            color, border, size = "#22c55e", 4, 34  # start: green
+            role = "START"
         elif nid == path_end:
-            node_color = "#ef4444"   # end: red
-            border = 4
-            size = 32
-        elif nid in hn:
-            node_color = "#f59e0b"   # intermediary on path: amber
-            border = 3
-            size = 26
+            color, border, size = "#ef4444", 4, 34  # end: red
+            role = "TARGET"
+        elif nid in pset:
+            color, border, size = "#f59e0b", 3, 26  # on-path: amber
+            role = "ON PATH"
         else:
-            node_color = base_color
-            border = 1
-            size = 18
+            color, border, size = (GREY if pnodes else base_color), (1 if not pnodes else 0), (12 if pnodes else 18)
+            role = a["type"].upper()
 
-        title = f"{a['type'].title()}: {a['label']}" + (f"<br><a href='{url}' target='_blank'>{url}</a>" if url else "")
-        net.add_node(nid, label=a["label"], color=node_color, title=title, borderWidth=border, size=size)
+        legend = "Legend: 🟩 Start · 🟥 Target · 🟧 Path · ◻︎ Dimmed"
+        title = f"{role}: {a['label']}<br><em>{legend}</em>" + (f"<br><a href='{url}' target='_blank'>{url}</a>" if url else "")
+        net.add_node(nid, label=a["label"], color=color, title=title, borderWidth=border, size=size)
 
     for u, v, d in G.edges(data=True):
         on_path = ((u, v) in he) or ((v, u) in he)
-        width = 4 if on_path else 1
-        color = "#ef4444" if on_path else None  # red path edges
-        net.add_edge(u, v, title=d.get("relation", ""), width=width, color=color)
+        if pnodes:
+            width = 4 if on_path else 1
+            color = PATH_EDGE if on_path else GREY
+        else:
+            width = 1
+            color = None
+        net.add_edge(u, v, title=d.get("relation",""), width=width, color=color)
 
     net.toggle_physics(True)
     return net.generate_html("graph.html")
@@ -259,6 +265,7 @@ end_display   = st.sidebar.selectbox("To",   ["(pick)"] + sorted(LABEL2ID.keys()
 find_path = st.sidebar.button("Find shortest path")
 warm_to_usv = st.sidebar.button("Find warm intro path → USV")
 clear_path = st.sidebar.button("Clear path")
+path_only = st.sidebar.checkbox("Show path only (if exists)", value=False)
 
 if clear_path:
     set_path([])
@@ -285,8 +292,7 @@ if H_base.number_of_nodes() == 0:
 # =================================================
 def shortest_path_safe(Gsub, src, dst) -> List[str]:
     if not src or not dst: return []
-    if src not in Gsub or dst not in Gsub:
-        return []
+    if src not in Gsub or dst not in Gsub: return []
     try:
         return nx.shortest_path(Gsub, source=src, target=dst)
     except nx.NetworkXNoPath:
@@ -311,7 +317,7 @@ elif warm_to_usv and start_display != "(pick)":
         st.warning("No warm intro path to USV in the current filtered view.")
 
 # =================================================
-# Now apply focus to the base view (don’t affect computed path)
+# Apply focus to the base view (don’t affect computed path)
 # =================================================
 def ego_focus(Gsub, center_id, radius):
     if center_id not in Gsub: return Gsub.copy()
@@ -328,12 +334,17 @@ if apply_focus:
     if center:
         H = ego_focus(H, center, depth)
 
+# Path-only toggle
+stored_path = st.session_state.get("PATH", [])
+if path_only and stored_path:
+    keep = set(stored_path)
+    H = H.subgraph(list(keep)).copy()
+
 # =================================================
 # Highlight path (if any), intersected with what’s visible after focus
 # =================================================
 highlight_nodes: Set[str] = set()
 highlight_edges: Set[Tuple[str, str]] = set()
-stored_path = st.session_state.get("PATH", [])
 if stored_path:
     visible_nodes = set(H.nodes())
     any_hidden = False
@@ -347,7 +358,7 @@ if stored_path:
             highlight_edges.add((u, v))
         else:
             any_hidden = True
-    if any_hidden:
+    if any_hidden and not path_only:
         st.info("A saved path exists, but some nodes are hidden by current focus/filters. Clear focus or widen filters to see the full path.")
 
 # =================================================
@@ -362,8 +373,17 @@ html = render_pyvis(
     highlight_edges=highlight_edges,
     path_start=path_start_id,
     path_end=path_end_id,
+    path_nodes=stored_path,
 )
 st.components.v1.html(html, height=720, scrolling=True)
+
+# Visual legend / callouts
+st.markdown(
+    """
+**How to read this:** 🟩 start · 🟥 target · 🟧 nodes on the route · grey = context.  
+Use **Warm Intro Path** or **Find shortest path** in the sidebar, then follow the steps below.
+"""
+)
 
 # =================================================
 # Node Inspector (useful details)
@@ -430,26 +450,85 @@ if pairs:
 stored_path = st.session_state.get("PATH", [])
 if stored_path:
     st.markdown("### Warm Intro Plan")
-    steps = [f"{META[n]['label']} `{META[n]['type']}`" for n in stored_path]
-    st.write(" → ".join(steps))
+    steps = [f"{i+1}. {META[n]['label']}  ·  `{META[n]['type']}`" for i, n in enumerate(stored_path)]
+    st.write("\n".join(steps))
 
     if len(stored_path) >= 3:
         intermediaries = stored_path[1:-1]
-        st.write("**Intro candidates (intermediaries on path):**")
         local_deg = {n: H.degree(n) for n in H.nodes()}
-        local_bet = nx.betweenness_centrality(H) if H.number_of_nodes() < 200 else {n: 0 for n in H.nodes()}
-        ranked = sorted(intermediaries, key=lambda n: (local_deg.get(n,0), local_bet.get(n,0.0)), reverse=True)
-        for n in ranked:
-            st.write(f"- {META[n]['label']} ({META[n]['type']}) — deg {local_deg.get(n,0)}, btw {local_bet.get(n,0.0):.3f}")
+        next_up_id = max(intermediaries, key=lambda n: local_deg.get(n,0), default=None)
+        if next_up_id:
+            st.write(f"**Next step:** Ask **{META[next_up_id]['label']}** for an intro to **{META[stored_path[-1]]['label']}**.")
 
     src = META[stored_path[0]]["label"]
     dst = META[stored_path[-1]]["label"]
-    st.write("**Suggested outreach ask (copy/paste):**")
-    ask = f"Quick favor: could you intro me to {dst}? I’m mapping warm paths and saw you’re a solid connector along the way."
-    st.code(ask, language="text")
+    st.write("**Copy‑paste outreach:**")
+    if len(stored_path) >= 3 and next_up_id:
+        first_name = META[next_up_id]['label'].split()[0]
+        email = f"Hi {first_name}, quick favor: could you intro me to {dst}? I’m exploring a conversation and you’re a strong connector."
+    else:
+        email = f"Quick favor: could you intro me to {dst}? I’m exploring a conversation and you seem well‑connected to their network."
+    st.code(email, language="text")
+
+    # Path CSV download
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["step", "node_id", "label", "type"])
+    for i, n in enumerate(stored_path, start=1):
+        w.writerow([i, n, META[n]["label"], META[n]["type"]])
+    st.download_button("Download path (CSV)", data=buf.getvalue(), file_name="warm_intro_path.csv", mime="text/csv", use_container_width=True)
 
 # =================================================
-# Export
+# NEW: Overlap Scout panel (pick 2–4 companies; see shared investors/founders)
+# =================================================
+st.markdown("### Overlap Scout")
+company_labels = sorted([META[n]["label"] for n in companies], key=str.lower)
+chosen = st.multiselect("Pick 2–4 companies to compare", company_labels, max_selections=4)
+
+def id_by_label(label: str) -> str | None:
+    for nid, a in META.items():
+        if a["label"] == label and a["type"] == "company":
+            return nid
+    return None
+
+if len(chosen) >= 2:
+    chosen_ids = [id_by_label(lbl) for lbl in chosen]
+    chosen_ids = [cid for cid in chosen_ids if cid in H_base]  # use base view for signal
+    if len(chosen_ids) >= 2:
+        # Shared investors
+        inv_sets = [{nb for nb in H_base.neighbors(c) if META[nb]["type"] == "investor"} for c in chosen_ids]
+        shared_inv = set.intersection(*inv_sets) if inv_sets else set()
+
+        # Shared founders (rare but interesting across pivots/acqui-hires)
+        f_sets = [{nb for nb in H_base.neighbors(c) if META[nb]["type"] == "founder"} for c in chosen_ids]
+        shared_founders = set.intersection(*f_sets) if f_sets else set()
+
+        if shared_inv or shared_founders:
+            st.write("**Shared signals across selected companies:**")
+            if shared_inv:
+                rows = []
+                for inv in sorted(shared_inv, key=lambda x: META[x]["label"].lower()):
+                    deg = H_base.degree(inv)
+                    rows.append({"Investor": META[inv]["label"], "Connections (deg)": deg})
+                st.table(rows)
+            if shared_founders:
+                rows = [{"Founder": META[f]["label"]} for f in sorted(shared_founders, key=lambda x: META[x]["label"].lower())]
+                st.table(rows)
+
+            # Best intro candidate among shared investors = highest degree
+            if shared_inv:
+                best = max(shared_inv, key=lambda n: H_base.degree(n))
+                st.success(f"**Best intro candidate:** {META[best]['label']} (shared investor with highest connectivity)")
+        else:
+            st.info("No shared investors or founders among the selected companies in the current dataset.")
+    else:
+        st.info("Selected companies are filtered out by current view. Clear filters to compare.")
+else:
+    st.caption("Tip: pick 2–4 companies to see shared investors/founders and the best intro candidate.")
+
+# =================================================
+# Export (current view)
 # =================================================
 payload = {
     "nodes": {n: {"label": META[n]["label"], "type": META[n]["type"], "url": META[n].get("url","")} for n in H.nodes()},
