@@ -6,7 +6,7 @@ import requests
 import streamlit as st
 from urllib.parse import urlparse
 from typing import List, Dict, Any, Tuple, Set
-from collections import defaultdict, Counter
+from collections import defaultdict
 
 # Graph + viz
 import networkx as nx
@@ -17,10 +17,11 @@ from pyvis.network import Network
 # -------------------------------------------------
 st.set_page_config(page_title="Founder Network Mapper", layout="wide")
 st.title("Founder Network Mapper")
-st.caption("Demo-friendly: public-web signals only (optional), with curated Demo Mode, Focus, and Warm Intro Paths")
+st.caption("Demo-friendly: curated Demo Mode, Focus on node, Warm Intro Paths, optional web augmentation")
 
 # -------------------------------------------------
 # Demo data (curated so you can show functionality without paid APIs)
+# Added: USV + partners connected to USV
 # -------------------------------------------------
 DEMO_GRAPH = {
     "nodes": [
@@ -28,6 +29,7 @@ DEMO_GRAPH = {
         {"id": "company::anthropic", "label": "Anthropic", "type": "company", "url": "https://www.anthropic.com/"},
         {"id": "company::figma",     "label": "Figma",     "type": "company", "url": "https://www.figma.com/"},
         {"id": "company::plaid",     "label": "Plaid",     "type": "company", "url": "https://plaid.com/"},
+
         # Founders
         {"id": "founder::dario_amodei",   "label": "Dario Amodei",   "type": "founder", "url": "https://en.wikipedia.org/wiki/Anthropic"},
         {"id": "founder::daniela_amodei", "label": "Daniela Amodei", "type": "founder", "url": "https://en.wikipedia.org/wiki/Anthropic"},
@@ -35,12 +37,21 @@ DEMO_GRAPH = {
         {"id": "founder::evan_wallace",   "label": "Evan Wallace",   "type": "founder", "url": "https://www.figma.com/blog/"},
         {"id": "founder::zach_perret",    "label": "Zach Perret",    "type": "founder", "url": "https://en.wikipedia.org/wiki/Plaid_(company)"},
         {"id": "founder::william_hockey", "label": "William Hockey", "type": "founder", "url": "https://en.wikipedia.org/wiki/Plaid_(company)"},
+
         # Investors (sample)
         {"id": "investor::spark_capital", "label": "Spark Capital", "type": "investor", "url": "https://www.sparkcapital.com/"},
         {"id": "investor::sequoia",       "label": "Sequoia Capital", "type": "investor", "url": "https://www.sequoiacap.com/"},
         {"id": "investor::a16z",          "label": "Andreessen Horowitz", "type": "investor", "url": "https://a16z.com/"},
         {"id": "investor::iconiq",        "label": "ICONIQ Capital", "type": "investor", "url": "https://www.iconiqcapital.com/"},
         {"id": "investor::index",         "label": "Index Ventures", "type": "investor", "url": "https://www.indexventures.com/"},
+
+        # USV + partners
+        {"id": "investor::usv",           "label": "Union Square Ventures", "type": "investor", "url": "https://www.usv.com/"},
+        {"id": "partner::fred_wilson",    "label": "Fred Wilson",   "type": "partner", "url": "https://www.usv.com/team/fred-wilson/"},
+        {"id": "partner::albert_wenger",  "label": "Albert Wenger", "type": "partner", "url": "https://www.usv.com/team/albert-wenger/"},
+        {"id": "partner::rebecca_kaden",  "label": "Rebecca Kaden", "type": "partner", "url": "https://www.usv.com/team/rebecca-kaden/"},
+        {"id": "partner::nick_grossman",  "label": "Nick Grossman", "type": "partner", "url": "https://www.usv.com/team/nick-grossman/"},
+        {"id": "partner::andy_weissman",  "label": "Andy Weissman", "type": "partner", "url": "https://www.usv.com/team/andy-weissman/"},
     ],
     "edges": [
         # Founder -> Company
@@ -50,12 +61,20 @@ DEMO_GRAPH = {
         {"u": "founder::evan_wallace",   "v": "company::figma",     "relation": "Co‑founder"},
         {"u": "founder::zach_perret",    "v": "company::plaid",     "relation": "Co‑founder"},
         {"u": "founder::william_hockey", "v": "company::plaid",     "relation": "Co‑founder"},
+
         # Investor -> Company (illustrative only)
         {"u": "investor::spark_capital", "v": "company::anthropic", "relation": "Investor"},
         {"u": "investor::sequoia",       "v": "company::figma",     "relation": "Investor"},
         {"u": "investor::a16z",          "v": "company::figma",     "relation": "Investor"},
         {"u": "investor::iconiq",        "v": "company::figma",     "relation": "Investor"},
         {"u": "investor::index",         "v": "company::plaid",     "relation": "Investor"},
+
+        # Partners -> USV
+        {"u": "partner::fred_wilson",    "v": "investor::usv", "relation": "Partner"},
+        {"u": "partner::albert_wenger",  "v": "investor::usv", "relation": "Partner"},
+        {"u": "partner::rebecca_kaden",  "v": "investor::usv", "relation": "Partner"},
+        {"u": "partner::nick_grossman",  "v": "investor::usv", "relation": "Partner"},
+        {"u": "partner::andy_weissman",  "v": "investor::usv", "relation": "Partner"},
     ],
     "sources": {
         "company::anthropic": [
@@ -63,18 +82,19 @@ DEMO_GRAPH = {
             "https://en.wikipedia.org/wiki/Anthropic"
         ],
         "company::figma": [
-            "https://www.figma.com/blog/figma-raises-series-e/",
+            "https://www.figma.com/",
             "https://en.wikipedia.org/wiki/Figma"
         ],
         "company::plaid": [
             "https://plaid.com/",
             "https://en.wikipedia.org/wiki/Plaid_(company)"
-        ]
+        ],
+        "investor::usv": ["https://www.usv.com/team/"]
     }
 }
 
 # -------------------------------------------------
-# Cached Google CSE search (reuse your existing secrets)
+# Cached Google CSE (optional augmentation)
 # -------------------------------------------------
 @st.cache_data(show_spinner=False, ttl=86400)
 def serp(q: str, num: int = 5) -> List[Dict[str, str]]:
@@ -100,7 +120,7 @@ def serp(q: str, num: int = 5) -> List[Dict[str, str]]:
              "link": it.get("link","")} for it in items[:num]]
 
 # -------------------------------------------------
-# Lightweight parsing helpers (heuristics)
+# Lightweight parsing (heuristics)
 # -------------------------------------------------
 VC_KEYWORDS = r"(Capital|Ventures?|Partners?|Fund|Holdings|Management|Investments?)"
 LED_BY = re.compile(r"\bled by ([^.;\n]+)", re.I)
@@ -262,7 +282,12 @@ def render_pyvis(G: nx.Graph, meta: Dict[str, Dict[str,Any]], height: str = "700
                  highlight_nodes: Set[str] | None = None, highlight_edges: Set[Tuple[str,str]] | None = None) -> str:
     net = Network(height=height, width="100%", bgcolor="#ffffff", font_color="#222")
     net.barnes_hut(spring_length=150, damping=0.85)
-    COLORS = {"company":"#16a34a", "founder":"#2563eb", "investor":"#f97316"}  # green, blue, orange
+    COLORS = {
+        "company":"#16a34a",   # green
+        "founder":"#2563eb",   # blue
+        "investor":"#f97316",  # orange
+        "partner":"#7c3aed"    # purple
+    }
     for nid, attrs in meta.items():
         if nid not in G:
             continue
@@ -297,15 +322,17 @@ if submitted:
         with st.spinner("Building graph..."):
             if demo_mode:
                 G, meta, sources_by_node = build_graph_from_demo()
-                if companies:
-                    keep = {f"company::{c.lower()}" for c in companies}
-                    to_keep = set()
-                    for nid in G.nodes():
-                        if nid in keep or any(nb in keep for nb in G.neighbors(nid)):
-                            to_keep.add(nid)
-                    G = G.subgraph(to_keep).copy()
-                    meta = {nid: meta[nid] for nid in G.nodes()}
-                    sources_by_node = {nid: set(sources_by_node.get(nid, set())) for nid in G.nodes()}
+                # keep only typed companies and their neighbors, plus USV and its partners so demo always shows them
+                keep_companies = {f"company::{c.lower()}" for c in companies}
+                usv_block = {"investor::usv", "partner::fred_wilson","partner::albert_wenger",
+                             "partner::rebecca_kaden","partner::nick_grossman","partner::andy_weissman"}
+                to_keep = set(usv_block)
+                for nid in G.nodes():
+                    if nid in keep_companies or any(nb in keep_companies for nb in G.neighbors(nid)):
+                        to_keep.add(nid)
+                G = G.subgraph(list(to_keep)).copy()
+                meta = {nid: meta[nid] for nid in G.nodes()}
+                sources_by_node = {nid: set(sources_by_node.get(nid, set())) for nid in G.nodes()}
                 if augment:
                     G2, meta2, src2 = build_graph_from_serp(companies)
                     for nid, attrs in meta2.items():
@@ -322,67 +349,82 @@ if submitted:
 
         # ---------- Sidebar controls ----------
         st.sidebar.header("Filters")
-        typ_filter = st.sidebar.multiselect("Node types", ["founder","company","investor"], default=["founder","company","investor"])
+        typ_filter = st.sidebar.multiselect("Node types", ["founder","company","investor","partner"],
+                                            default=["founder","company","investor","partner"])
         query = st.sidebar.text_input("Search name contains", value="")
+
+        # Build stable selector labels to avoid crashes when nodes are filtered
+        def _display_label(nid: str) -> str:
+            a = meta[nid]
+            return f"{a['label']} ({a['type']})"
+
+        all_options = sorted([_display_label(nid) for nid in G.nodes()], key=lambda s: s.lower())
+        label_to_id = { _display_label(nid): nid for nid in G.nodes() }
 
         # Focus on node (ego network)
         st.sidebar.header("Focus")
-        all_labels = {nid: meta[nid]["label"] for nid in G.nodes()}
-        label_to_id = {v: k for k, v in all_labels.items()}
-        focus_label = st.sidebar.selectbox("Focus on node", ["(none)"] + sorted(all_labels.values()), index=0)
-        focus_depth = st.sidebar.slider("Depth (hops)", min_value=1, max_value=2, value=1)
-        apply_focus = st.sidebar.checkbox("Apply focus", value=False)
+        focus_display = st.sidebar.selectbox("Focus on node", ["(none)"] + all_options, index=0, key="focus_select")
+        focus_depth = st.sidebar.slider("Depth (hops)", min_value=1, max_value=2, value=1, key="focus_depth")
+        apply_focus = st.sidebar.checkbox("Apply focus", value=False, key="apply_focus")
 
         # Warm intro path
         st.sidebar.header("Warm Intro Path")
-        start_label = st.sidebar.selectbox("From", ["(pick)"] + sorted(all_labels.values()), index=0, key="path_from")
-        end_label   = st.sidebar.selectbox("To",   ["(pick)"] + sorted(all_labels.values()), index=0, key="path_to")
+        start_display = st.sidebar.selectbox("From", ["(pick)"] + all_options, index=0, key="path_from")
+        end_display   = st.sidebar.selectbox("To",   ["(pick)"] + all_options, index=0, key="path_to")
         find_path = st.sidebar.button("Find shortest path")
 
         # ---------- Filtering ----------
         query_l = (query or "").lower().strip()
         visible = []
         for nid, attrs in meta.items():
-            if nid not in G: 
+            if nid not in G:
                 continue
-            if attrs["type"] not in typ_filter: 
+            if attrs["type"] not in typ_filter:
                 continue
             if query_l and query_l not in attrs["label"].lower():
                 continue
             visible.append(nid)
         H = G.subgraph(visible).copy()
 
-        # Apply focus (ego network)
+        # Safety: if empty after filters, show message instead of crashing to homepage
+        if H.number_of_nodes() == 0:
+            st.info("No nodes match the current filters/focus. Clear filters or pick another node.")
+            st.stop()
+
+        # Apply focus (ego network) with safeguards
         highlighted_nodes: Set[str] = set()
         highlighted_edges: Set[Tuple[str,str]] = set()
-        if apply_focus and focus_label != "(none)":
-            fid = label_to_id.get(focus_label)
+        if apply_focus and focus_display != "(none)":
+            fid = label_to_id.get(focus_display)
             if fid in H:
                 ego_nodes = nx.ego_graph(H, fid, radius=focus_depth).nodes()
                 H = H.subgraph(list(ego_nodes)).copy()
                 highlighted_nodes = set(H.nodes())
+                if H.number_of_nodes() == 0:
+                    st.info("Focused node is filtered out by current filters.")
             else:
-                st.sidebar.warning("Focused node is filtered out. Clear filters or pick another node.")
+                st.info("Focused node is not in the current filtered view. Adjust filters or turn off focus.")
 
-        # Find warm intro path (shortest path)
+        # Warm intro path (shortest path) with safeguards
         path_nodes: List[str] = []
-        if find_path and start_label != "(pick)" and end_label != "(pick)":
-            sid = label_to_id.get(start_label)
-            tid = label_to_id.get(end_label)
+        if find_path and start_display != "(pick)" and end_display != "(pick)":
+            sid = label_to_id.get(start_display)
+            tid = label_to_id.get(end_display)
             if sid in H and tid in H:
                 try:
                     path_nodes = nx.shortest_path(H, source=sid, target=tid)
-                    # collect edges on path
                     for u, v in zip(path_nodes, path_nodes[1:]):
                         highlighted_edges.add((u, v))
                     highlighted_nodes.update(path_nodes)
                 except nx.NetworkXNoPath:
-                    st.warning("No connection found between those nodes in the current view.")
+                    st.warning("No connection found between the selected nodes in the current view.")
             else:
-                st.warning("One or both selected nodes are filtered out. Adjust filters or focus.")
+                st.warning("One or both selected nodes are not visible under current filters.")
 
         # ---------- Render main graph ----------
-        html = render_pyvis(H, {nid: meta[nid] for nid in H.nodes()}, highlight_nodes=highlighted_nodes, highlight_edges=highlighted_edges)
+        html = render_pyvis(H, {nid: meta[nid] for nid in H.nodes()},
+                            highlight_nodes=highlighted_nodes,
+                            highlight_edges=highlighted_edges)
         st.components.v1.html(html, height=720, scrolling=True)
 
         # Path explanation
