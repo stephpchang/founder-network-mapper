@@ -7,11 +7,16 @@ from collections import defaultdict
 import networkx as nx
 from pyvis.network import Network
 
+# =========================
+# App shell
+# =========================
 st.set_page_config(page_title="Founder Network Mapper", layout="wide")
 st.title("Founder Network Mapper")
-st.caption("Demo mode with USV network, reliable Focus by hops, Node Inspector, shared-investor insights, warm-intro paths.")
+st.caption("USV demo: reliable warm-intro paths, ranked candidates, path reasons, CSV export. No paid APIs required.")
 
-# ---------------- Demo data (USV + partners + portfolio) ----------------
+# =========================
+# Curated demo graph (USV)
+# =========================
 DEMO_GRAPH = {
     "nodes": [
         {"id":"investor::usv","label":"Union Square Ventures","type":"investor","url":"https://www.usv.com/"},
@@ -20,7 +25,7 @@ DEMO_GRAPH = {
         {"id":"partner::rebecca_kaden","label":"Rebecca Kaden","type":"partner","url":"https://www.usv.com/team/rebecca-kaden/"},
         {"id":"partner::nick_grossman","label":"Nick Grossman","type":"partner","url":"https://www.usv.com/team/nick-grossman/"},
         {"id":"partner::andy_weissman","label":"Andy Weissman","type":"partner","url":"https://www.usv.com/team/andy-weissman/"},
-        # Portfolio (subset) + founders
+        # portfolio subset + founders
         {"id":"company::etsy","label":"Etsy","type":"company","url":"https://www.etsy.com/"},
         {"id":"founder::rob_kalin","label":"Rob Kalin","type":"founder","url":"https://en.wikipedia.org/wiki/Etsy"},
         {"id":"founder::chris_maguire","label":"Chris Maguire","type":"founder","url":"https://en.wikipedia.org/wiki/Etsy"},
@@ -62,12 +67,13 @@ DEMO_GRAPH = {
         {"id":"investor::iconiq","label":"ICONIQ Capital","type":"investor","url":"https://www.iconiqcapital.com/"},
     ],
     "edges": [
+        # USV structure
         {"u":"partner::fred_wilson","v":"investor::usv","relation":"Partner"},
         {"u":"partner::albert_wenger","v":"investor::usv","relation":"Partner"},
         {"u":"partner::rebecca_kaden","v":"investor::usv","relation":"Partner"},
         {"u":"partner::nick_grossman","v":"investor::usv","relation":"Partner"},
         {"u":"partner::andy_weissman","v":"investor::usv","relation":"Partner"},
-
+        # USV -> portfolio
         {"u":"investor::usv","v":"company::etsy","relation":"Invested in"},
         {"u":"investor::usv","v":"company::twitter","relation":"Invested in"},
         {"u":"investor::usv","v":"company::coinbase","relation":"Invested in"},
@@ -76,34 +82,27 @@ DEMO_GRAPH = {
         {"u":"investor::usv","v":"company::tumblr","relation":"Invested in"},
         {"u":"investor::usv","v":"company::foursquare","relation":"Invested in"},
         {"u":"investor::usv","v":"company::soundcloud","relation":"Invested in"},
-
+        # companies -> founders
         {"u":"company::etsy","v":"founder::rob_kalin","relation":"Founded by"},
         {"u":"company::etsy","v":"founder::chris_maguire","relation":"Founded by"},
         {"u":"company::etsy","v":"founder::haim_schoppik","relation":"Founded by"},
-
         {"u":"company::twitter","v":"founder::jack_dorsey","relation":"Founded by"},
         {"u":"company::twitter","v":"founder::biz_stone","relation":"Founded by"},
         {"u":"company::twitter","v":"founder::ev_williams","relation":"Founded by"},
         {"u":"company::twitter","v":"founder::noah_glass","relation":"Founded by"},
-
         {"u":"company::coinbase","v":"founder::brian_armstrong","relation":"Founded by"},
         {"u":"company::coinbase","v":"founder::fred_ehrsam","relation":"Founded by"},
-
         {"u":"company::duolingo","v":"founder::luis_von_ahn","relation":"Founded by"},
         {"u":"company::duolingo","v":"founder::severin_hacker","relation":"Founded by"},
-
         {"u":"company::kickstarter","v":"founder::perry_chen","relation":"Founded by"},
         {"u":"company::kickstarter","v":"founder::yancey_strickler","relation":"Founded by"},
         {"u":"company::kickstarter","v":"founder::charles_adler","relation":"Founded by"},
-
         {"u":"company::tumblr","v":"founder::david_karp","relation":"Founded by"},
-
         {"u":"company::foursquare","v":"founder::dennis_crowley","relation":"Founded by"},
         {"u":"company::foursquare","v":"founder::naveen_selvadurai","relation":"Founded by"},
-
         {"u":"company::soundcloud","v":"founder::alexander_ljung","relation":"Founded by"},
         {"u":"company::soundcloud","v":"founder::eric_wahlforss","relation":"Founded by"},
-
+        # extra investors
         {"u":"investor::sequoia","v":"company::twitter","relation":"Investor"},
         {"u":"investor::a16z","v":"company::coinbase","relation":"Investor"},
         {"u":"investor::iconiq","v":"company::duolingo","relation":"Investor"},
@@ -121,332 +120,248 @@ DEMO_GRAPH = {
     }
 }
 
-# ---------------- Optional Google CSE (kept; off by default) ----------------
-@st.cache_data(show_spinner=False, ttl=86400)
-def serp(q: str, num: int = 5):
-    cx, key = os.getenv("GOOGLE_CSE_ID"), os.getenv("GOOGLE_API_KEY")
-    if not cx or not key: return []
-    num = max(1, min(num, 10))
-    r = requests.get("https://www.googleapis.com/customsearch/v1",
-                     params={"q": q, "cx": cx, "key": key, "num": num}, timeout=15)
-    if r.status_code != 200:
-        return [{"title": f"Search error {r.status_code}", "snippet": r.text[:160], "link": ""}]
-    items = r.json().get("items") or []
-    return [{"title": it.get("title",""), "snippet": it.get("snippet",""), "link": it.get("link","")} for it in items[:num]]
-
-# ---------------- Graph build & session helpers ----------------
+# =========================
+# Build + session
+# =========================
 def build_demo_graph():
-    G = nx.Graph(); meta = {}; sources = defaultdict(set)
+    G = nx.Graph(); meta = {}; src = defaultdict(set)
     for n in DEMO_GRAPH["nodes"]:
         meta[n["id"]] = {"type": n["type"], "label": n["label"], "url": n.get("url","")}
         G.add_node(n["id"])
     for e in DEMO_GRAPH["edges"]:
         G.add_edge(e["u"], e["v"], relation=e.get("relation",""))
     for nid, urls in (DEMO_GRAPH.get("sources") or {}).items():
-        for u in urls: sources[nid].add(u)
-    return G, meta, sources
+        for u in urls: src[nid].add(u)
+    return G, meta, src
 
-def save_graph(G, meta, sources):
+def save_graph(G, META, SOURCES):
     st.session_state.G = G
-    st.session_state.META = meta
-    st.session_state.SOURCES = sources
-    st.session_state.LABEL2ID = {f"{meta[n]['label']} ({meta[n]['type']})": n for n in G.nodes()}
+    st.session_state.META = META
+    st.session_state.SOURCES = SOURCES
+    st.session_state.LABEL2ID = {f"{META[n]['label']} ({META[n]['type']})": n for n in G.nodes()}
 
 def load_graph():
     return (st.session_state.get("G"), st.session_state.get("META"),
             st.session_state.get("SOURCES"), st.session_state.get("LABEL2ID"))
 
-# ---------------- Visualization ----------------
-def render_pyvis(G, meta, height="700px", highlight_nodes=None, highlight_edges=None):
-    net = Network(height=height, width="100%", bgcolor="#ffffff", font_color="#222")
-    net.barnes_hut(spring_length=150, damping=0.85)
-    COLORS = {"company":"#16a34a","founder":"#2563eb","investor":"#f97316","partner":"#7c3aed"}
-    hn = highlight_nodes or set(); he = highlight_edges or set()
-    for nid in G.nodes():
-        a = meta[nid]; color = COLORS.get(a["type"], "#64748b")
-        title = f"{a['type'].title()}: {a['label']}" + (f"<br><a href='{a.get('url','')}' target='_blank'>{a.get('url','')}</a>" if a.get("url") else "")
-        net.add_node(nid, label=a["label"], color=color, title=title, borderWidth=(3 if nid in hn else 1))
-    for u, v, d in G.edges(data=True):
-        net.add_edge(u, v, title=d.get("relation",""), width=(3 if ((u,v) in he or (v,u) in he) else 1))
-    net.toggle_physics(True)
-    return net.generate_html("graph.html")
-
-# ---------------- Build (demo only for now) ----------------
 with st.form("builder"):
-    demo_mode = st.checkbox("Use Demo Mode", value=True, help="Curated USV network; great for demos.")
-    submitted = st.form_submit_button("Build / Rebuild")
-if submitted:
-    if not demo_mode:
-        st.warning("For now, enable Demo Mode (no paid APIs)."); st.stop()
-    G, META, SOURCES = build_demo_graph()
-    save_graph(G, META, SOURCES)
+    if st.form_submit_button("Load USV Demo Network"):
+        G, META, SOURCES = build_demo_graph()
+        save_graph(G, META, SOURCES)
 
 G, META, SOURCES, LABEL2ID = load_graph()
 if G is None:
-    st.info("Click **Build / Rebuild** to load the USV demo network.")
+    st.info("Click **Load USV Demo Network** to start.")
     st.stop()
 
-# ---------------- Sidebar controls ----------------
+# =========================
+# Sidebar controls
+# =========================
 st.sidebar.header("Filters")
 typ_filter = st.sidebar.multiselect("Node types", ["founder","company","investor","partner"],
                                     default=["founder","company","investor","partner"])
-query = st.sidebar.text_input("Search name contains", "")
+query = st.sidebar.text_input("Search label contains", "")
 
 st.sidebar.header("Focus")
-usv_focus = st.sidebar.checkbox("USV‑centric view", value=True, help="Quickly view nodes within N hops of USV.")
 depth = int(st.sidebar.slider("Depth (hops)", 1, 3, 2))
-focus_display = st.sidebar.selectbox("Or pick a node to focus", ["(none)"] + sorted(LABEL2ID.keys()), index=0, key="focus_pick")
+focus_pick = st.sidebar.selectbox("Focus on node", ["(none)"] + sorted(LABEL2ID.keys()), index=0)
 apply_focus = st.sidebar.checkbox("Apply focus", value=True)
 
 st.sidebar.header("Warm Intro Path")
-start_display = st.sidebar.selectbox("From", ["(pick)"] + sorted(LABEL2ID.keys()), index=0, key="path_from")
-end_display   = st.sidebar.selectbox("To",   ["(pick)"] + sorted(LABEL2ID.keys()), index=0, key="path_to")
-find_path = st.sidebar.button("Find shortest path")
+start_pick = st.sidebar.selectbox("From", ["(pick)"] + sorted(LABEL2ID.keys()), index=0)
+end_pick   = st.sidebar.selectbox("To",   ["(pick)"] + sorted(LABEL2ID.keys()), index=0)
+run_path = st.sidebar.button("Compute path")
 
-# ---------------- Apply filters ----------------
-def subgraph_by_filters(G, META, typ_filter, query):
-    q = (query or "").lower().strip()
+# =========================
+# Filtering
+# =========================
+def subgraph_by_filters(G, META, types, q):
+    q = (q or "").lower().strip()
     keep = []
-    for nid, a in META.items():
-        if nid not in G: continue
-        if a["type"] not in typ_filter: continue
+    for n,a in META.items():
+        if n not in G: continue
+        if a["type"] not in types: continue
         if q and q not in a["label"].lower(): continue
-        keep.append(nid)
+        keep.append(n)
     return G.subgraph(keep).copy()
 
 H = subgraph_by_filters(G, META, typ_filter, query)
 if H.number_of_nodes() == 0:
     st.info("No nodes match current filters."); st.stop()
 
-# ---------------- Focus logic (fixed): ego graph by hops ----------------
+# =========================
+# Focus by hops (fixed)
+# =========================
+def ego_subgraph(Gsub: nx.Graph, center: str, radius: int):
+    if center not in Gsub: return Gsub.copy(), set(), set()
+    ego = nx.ego_graph(Gsub, center, radius=radius, undirected=True)
+    return ego.copy(), set(ego.nodes()), set(ego.edges())
+
 highlight_nodes, highlight_edges = set(), set()
-def ego_subgraph(Gsub, center_id, radius):
-    if center_id not in Gsub: return Gsub.copy(), set(), set()
-    ego = nx.ego_graph(Gsub, center_id, radius=radius, undirected=True)
-    hn = set(ego.nodes())
-    he = set((u, v) for u, v in ego.edges())
-    return ego.copy(), hn, he
-
-if apply_focus:
-    center = None
-    if usv_focus and "investor::usv" in H:
-        center = "investor::usv"
-    elif focus_display != "(none)":
-        center = LABEL2ID.get(focus_display)
-        if center not in H: center = None
-    if center:
+if apply_focus and focus_pick != "(none)":
+    center = LABEL2ID.get(focus_pick)
+    if center in H:
         H, highlight_nodes, highlight_edges = ego_subgraph(H, center, depth)
-
-# ---------------- Warm intro path ----------------
-path_nodes = []
-if find_path and start_display != "(pick)" and end_display != "(pick)":
-    sid, tid = LABEL2ID.get(start_display), LABEL2ID.get(end_display)
-    if sid in H and tid in H:
-        try:
-            path_nodes = nx.shortest_path(H, source=sid, target=tid)
-            for u, v in zip(path_nodes, path_nodes[1:]): highlight_edges.add((u, v))
-            highlight_nodes.update(path_nodes)
-        except nx.NetworkXNoPath:
-            st.warning("No connection found in the current view.")
     else:
-        st.warning("One or both nodes are not visible with current filters/focus.")
+        st.info("Focused node is not visible with current filters.")
 
-# ---------------- Render graph ----------------
-html = render_pyvis(H, META, highlight_nodes=highlight_nodes, highlight_edges=highlight_edges)
-st.components.v1.html(html, height=720, scrolling=True)
+# =========================
+# Render graph
+# =========================
+def render_pyvis(G, META, highlight_nodes=None, highlight_edges=None):
+    net = Network(height="720px", width="100%", bgcolor="#fff", font_color="#222")
+    net.barnes_hut(spring_length=150, damping=0.85)
+    COLORS = {"company":"#16a34a","founder":"#2563eb","investor":"#f97316","partner":"#7c3aed"}
+    hn = highlight_nodes or set(); he = highlight_edges or set()
+    for n in G.nodes():
+        a = META[n]; color = COLORS.get(a["type"], "#64748b")
+        title = f"{a['type'].title()}: {a['label']}" + (f"<br><a href='{a.get('url','')}' target='_blank'>{a.get('url','')}</a>" if a.get("url") else "")
+        net.add_node(n, label=a["label"], color=color, title=title, borderWidth=(3 if n in hn else 1))
+    for u, v in G.edges():
+        rel = G.get_edge_data(u,v).get("relation","")
+        net.add_edge(u, v, title=rel, width=(3 if ((u,v) in he or (v,u) in he) else 1))
+    net.toggle_physics(True)
+    return net.generate_html("g.html")
 
-# ---------------- Node Inspector (useful!) ----------------
-st.markdown("### Node Inspector")
-labels_sorted = sorted([f"{META[n]['label']} ({META[n]['type']})" for n in H.nodes()], key=str.lower)
-pick = st.selectbox("Select a node to inspect", labels_sorted, index=0)
-nid = LABEL2ID[pick]
+html = render_pyvis(H, META, highlight_nodes, highlight_edges)
+st.components.v1.html(html, height=740, scrolling=True)
 
-def _neighbors_by_type(nid, t):
-    return sorted([nb for nb in H.neighbors(nid) if META[nb]["type"] == t], key=lambda x: META[x]["label"].lower())
+# =========================
+# Warm Intro Finder (ranked) — USV value
+# =========================
+st.markdown("## Warm‑Intro Finder (ranked)")
 
-cols = st.columns(3)
-with cols[0]:
-    st.write("**Companies**")
-    for nb in _neighbors_by_type(nid, "company"):
-        st.write(f"- {META[nb]['label']}")
-with cols[1]:
-    st.write("**Founders/Partners**")
-    for t in ("founder","partner"):
-        for nb in _neighbors_by_type(nid, t):
-            st.write(f"- {META[nb]['label']}")
-with cols[2]:
-    st.write("**Investors**")
-    for nb in _neighbors_by_type(nid, "investor"):
-        st.write(f"- {META[nb]['label']}")
-
-# Sources for inspector node
-urls = sorted(list(st.session_state.SOURCES.get(nid, [])))
-if urls:
-    st.write("**Sources:**")
-    for u in urls:
-        st.write(f"- [{urlparse(u).netloc}]({u})")
-
-# ---------------- Insights ----------------
-st.markdown("### Insights")
-# Top connectors by degree & betweenness (more useful than degree alone)
-deg = {n: H.degree(n) for n in H.nodes()}
-bet = nx.betweenness_centrality(H) if H.number_of_nodes() < 150 else {n: 0 for n in H.nodes()}
-top = sorted(H.nodes(), key=lambda n: (deg[n], bet[n]), reverse=True)[:5]
-if top:
-    st.write("Most connected in this view (degree | betweenness):")
-    for n in top:
-        st.write(f"- {META[n]['label']} ({META[n]['type']}) — {deg[n]} | {bet[n]:.3f}")
-
-# Shared investors between companies (fast signal)
-companies = [n for n in H.nodes() if META[n]["type"] == "company"]
-inv_by_company = {c: {nb for nb in H.neighbors(c) if META[nb]["type"] == "investor"} for c in companies}
-pairs = []
-for i in range(len(companies)):
-    for j in range(i+1, len(companies)):
-        a, b = companies[i], companies[j]
-        shared = inv_by_company[a].intersection(inv_by_company[b])
-        if shared:
-            pairs.append((META[a]["label"], META[b]["label"], sorted(META[s]["label"] for s in shared)))
-if pairs:
-    st.write("Shared investors between companies:")
-    for a, b, lst in pairs[:8]:
-        st.write(f"- {a} ↔ {b}: " + ", ".join(lst))
-
-# ================================
-# Warm‑Intro Finder (Ranked)
-# ================================
-import math
-import csv
-from io import StringIO
-
-st.markdown("### Warm‑Intro Finder (Ranked)")
-
-# 1) Choose a target node (company or founder)
-choices = sorted([f"{META[n]['label']} ({META[n]['type']})" for n in H.nodes() if META[n]["type"] in ("company","founder")], key=str.lower)
-if not choices:
+# candidate pool & target
+target_choices = sorted([f"{META[n]['label']} ({META[n]['type']})" for n in H.nodes() if META[n]["type"] in ("company","founder")], key=str.lower)
+if not target_choices:
     st.info("No companies or founders visible. Adjust filters above.")
 else:
-    target_pick = st.selectbox("Target company/founder", choices, key="warm_target")
+    target_pick = st.selectbox("Target company/founder", target_choices, key="warm_target")
     target_id = LABEL2ID[target_pick]
 
-    # 2) Choose candidate pool (who could intro you)
-    #    Default to USV partners + investors, since this is the USV use case.
-    pool_types = st.multiselect(
-        "Who should we consider for intros?",
-        ["partner","investor","founder"],
-        default=["partner","investor"],
-        help="These are nodes we’ll rank as potential introducers to your target."
-    )
+    pool_types = st.multiselect("Who could intro you?", ["partner","investor","founder"], default=["partner","investor"])
+    require_usv_partner = st.checkbox("Require path to include a USV partner", value=True,
+                                      help="Ensures paths go through Fred/Albert/Rebecca/Nick/Andy (strongest USV signal).")
 
-    # 3) Scoring model for edges and paths (lightweight but effective)
-    EDGE_WEIGHT = {
-        "Partner": 3.0,          # partner ↔ USV
-        "Invested in": 2.5,      # USV ↔ Company
-        "Investor": 2.2,         # Investor ↔ Company
-        "Founded by": 2.0,       # Founder ↔ Company
-        "Co‑founder": 2.0,       # (if present in your graph)
-    }
-    TYPE_BONUS = {
-        "partner": 1.5,          # prefer USV partners
-        "investor": 1.2,
-        "founder": 1.0,
-        "company": 0.8,
-    }
+    # Transparent edge weights (value story)
+    EDGE_WEIGHT = {"Partner": 3.0, "Invested in": 2.5, "Investor": 2.2, "Founded by": 2.0}
+    TYPE_BONUS = {"partner": 1.5, "investor": 1.2, "founder": 1.0, "company": 0.8}
 
-    def path_score(path: list[str]) -> float:
-        """Higher is better: shorter paths and stronger relations → higher score."""
-        if len(path) < 2:
-            return 0.0
-        score = 0.0
-        # relationship strength
-        for u, v in zip(path, path[1:]):
-            rel = H.get_edge_data(u, v, {}).get("relation", "")
-            score += EDGE_WEIGHT.get(rel, 1.0)
-        # preference for candidate type
-        candidate_type = META[path[0]]["type"]
-        score *= TYPE_BONUS.get(candidate_type, 1.0)
-        # penalize long paths slightly
-        score -= 0.5 * (len(path) - 2)
-        return round(score, 3)
+    # precompute partner IDs for constraint
+    USV_PARTNERS = {n for n,a in META.items() if a["type"] == "partner"}
 
-    # 4) Build candidate set (visible nodes of the chosen types)
+    def path_reason(p: List[str]) -> str:
+        hops = []
+        for u,v in zip(p,p[1:]):
+            rel = H.get_edge_data(u,v,{}).get("relation","")
+            hops.append(f"{META[u]['label']} —{rel}→ {META[v]['label']}")
+        return " → ".join(hops)
+
+    def path_score(p: List[str]) -> float:
+        if len(p) < 2: return 0.0
+        s = 0.0
+        for u,v in zip(p,p[1:]):
+            rel = H.get_edge_data(u,v,{}).get("relation","")
+            s += EDGE_WEIGHT.get(rel, 1.0)
+        s *= TYPE_BONUS.get(META[p[0]]["type"], 1.0)   # candidate type
+        s -= 0.5 * (len(p) - 2)                        # slight penalty for length
+        return round(s, 3)
+
+    # candidates from current view
     candidates = [n for n in H.nodes() if META[n]["type"] in pool_types and n != target_id]
 
-    # 5) Find best shortest path per candidate and rank
-    ranked = []
+    ranked: List[Tuple[float, List[str]]] = []
     for c in candidates:
         try:
-            sp = nx.shortest_path(H, source=c, target=target_id)
-            s = path_score(sp)
-            if s <= 0: 
+            p = nx.shortest_path(H, source=c, target=target_id)
+            if require_usv_partner and not any(x in USV_PARTNERS for x in p):
                 continue
-            ranked.append((s, sp))
+            ranked.append((path_score(p), p))
         except nx.NetworkXNoPath:
             continue
 
     ranked.sort(key=lambda x: x[0], reverse=True)
-    top_k = st.slider("Show top N candidates", 3, 15, 7)
+    top_k = st.slider("Show top N", 3, 15, 7)
 
     if not ranked:
-        st.info("No warm intro paths found with current filters. Try widening filters or depth.")
+        st.warning("No acceptable warm-intro paths with current constraints. Try turning off the USV-partner requirement or widen filters.")
     else:
         show = ranked[:top_k]
-
-        # Pretty printer for a path segment reason
-        def path_reason(p: list[str]) -> str:
-            hops = []
-            for u, v in zip(p, p[1:]):
-                rel = H.get_edge_data(u, v, {}).get("relation", "")
-                hops.append(f"{META[u]['label']} —{rel}→ {META[v]['label']}")
-            return " → ".join(hops)
-
-        # Render the list
-        st.write("**Ranked intro candidates:**")
+        st.write("**Ranked candidates:**")
         export_rows = []
-        for rank, (score, path_nodes) in enumerate(show, start=1):
-            cand = path_nodes[0]
-            cand_label = META[cand]["label"]
-            cand_type  = META[cand]["type"]
+        for i,(score,p) in enumerate(show, start=1):
+            cand = p[0]
+            cand_label = META[cand]["label"]; cand_type = META[cand]["type"]
+            labels_chain = " → ".join(META[n]["label"] for n in p)
+            reason = path_reason(p)
 
-            # human‑readable summary
-            reason = path_reason(path_nodes)
-            path_labels = " → ".join(META[n]["label"] for n in path_nodes)
-
-            st.markdown(f"**{rank}. {cand_label}**  <sub>`{cand_type}`</sub> — score **{score}**", unsafe_allow_html=True)
+            st.markdown(f"**{i}. {cand_label}**  <sub>`{cand_type}`</sub> — score **{score}**", unsafe_allow_html=True)
             st.caption(reason)
 
-            # quick email draft (copy/paste)
             with st.expander("Email draft"):
-                target_label = META[target_id]["label"]
+                tgt = META[target_id]["label"]
                 st.write(
-                    f"Subject: Quick intro to {target_label}?\n\n"
+                    f"Subject: Quick intro to {tgt}?\n\n"
                     f"Hi {{FirstName}},\n\n"
-                    f"Hope you’re well. We’re looking to connect with **{target_label}** and noticed you’re connected via "
-                    f"**{path_labels}**. If you’re open to it, a brief intro would be amazing—happy to send a blurb.\n\n"
-                    f"Thanks!\n"
+                    f"We’re hoping to connect with **{tgt}**. Noticed a path via **{labels_chain}**. "
+                    f"If you’re open to it, could you make a brief intro? Happy to send a blurb.\n\n"
+                    f"Thanks so much!\n"
                 )
 
             export_rows.append({
-                "rank": rank,
+                "rank": i,
                 "candidate": cand_label,
                 "candidate_type": cand_type,
                 "score": score,
-                "path": path_labels,
-                "reason": reason
+                "path_labels": labels_chain,
+                "path_reason": reason
             })
 
         # CSV export
-        csv_buf = StringIO()
-        writer = csv.DictWriter(csv_buf, fieldnames=list(export_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(export_rows)
-        st.download_button("Download warm‑intro hit list (CSV)", csv_buf.getvalue(), file_name="warm_intro_ranked.csv", use_container_width=True)
-# ---------------- Export ----------------
+        import csv
+        from io import StringIO
+        buf = StringIO(); w = csv.DictWriter(buf, fieldnames=list(export_rows[0].keys()))
+        w.writeheader(); w.writerows(export_rows)
+        st.download_button("Download warm‑intro hit list (CSV)", buf.getvalue(),
+                           file_name="warm_intro_ranked.csv", use_container_width=True)
+
+# =========================
+# Manual Warm Intro Path (debuggable)
+# =========================
+st.markdown("## Manual Warm Intro Path")
+left, right = st.columns(2)
+with left:
+    s_pick = st.selectbox("From", ["(pick)"] + sorted(LABEL2ID.keys()), index=0, key="manual_from")
+with right:
+    t_pick = st.selectbox("To", ["(pick)"] + sorted(LABEL2ID.keys()), index=0, key="manual_to")
+if st.button("Compute manual path"):
+    if s_pick == "(pick)" or t_pick == "(pick)":
+        st.warning("Pick both endpoints.")
+    else:
+        s_id, t_id = LABEL2ID[s_pick], LABEL2ID[t_pick]
+        if s_id in H and t_id in H:
+            try:
+                p = nx.shortest_path(H, source=s_id, target=t_id)
+                st.success(" → ".join(META[n]["label"] for n in p))
+            except nx.NetworkXNoPath:
+                st.warning("No connection in current view.")
+        else:
+            st.warning("One or both nodes are filtered out. Adjust filters/focus.")
+
+# =========================
+# Sources + export
+# =========================
+st.markdown("## Sources")
+for n in H.nodes():
+    urls = sorted(list(st.session_state.SOURCES.get(n, [])))
+    if not urls: continue
+    st.markdown(f"**{META[n]['label']}**  <sub>`{META[n]['type']}`</sub>", unsafe_allow_html=True)
+    for u in urls:
+        st.write(f"- [{urlparse(u).netloc}]({u})")
+
 payload = {
     "nodes": {n: {"label": META[n]["label"], "type": META[n]["type"], "url": META[n].get("url","")} for n in H.nodes()},
-    "edges": [{"u": u, "v": v, "relation": G.get_edge_data(u,v).get("relation","")} for u,v in H.edges() if u in H and v in H],
+    "edges": [{"u": u, "v": v, "relation": H.get_edge_data(u,v).get("relation","")} for u,v in H.edges()],
     "sources": {n: sorted(list(st.session_state.SOURCES.get(n, []))) for n in H.nodes()},
 }
-st.download_button("Download graph JSON", json.dumps(payload, indent=2), file_name="founder_network.json", use_container_width=True)
-
-st.caption("Note: Demo data is curated for presentation. Public web augmentation can be added later; verify before use.")
+st.download_button("Download current view (JSON)", json.dumps(payload, indent=2), file_name="founder_network.json", use_container_width=True)
