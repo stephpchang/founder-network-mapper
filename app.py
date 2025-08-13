@@ -312,6 +312,135 @@ if pairs:
     for a, b, lst in pairs[:8]:
         st.write(f"- {a} ↔ {b}: " + ", ".join(lst))
 
+# ================================
+# Warm‑Intro Finder (Ranked)
+# ================================
+import math
+import csv
+from io import StringIO
+
+st.markdown("### Warm‑Intro Finder (Ranked)")
+
+# 1) Choose a target node (company or founder)
+choices = sorted([f"{META[n]['label']} ({META[n]['type']})" for n in H.nodes() if META[n]["type"] in ("company","founder")], key=str.lower)
+if not choices:
+    st.info("No companies or founders visible. Adjust filters above.")
+else:
+    target_pick = st.selectbox("Target company/founder", choices, key="warm_target")
+    target_id = LABEL2ID[target_pick]
+
+    # 2) Choose candidate pool (who could intro you)
+    #    Default to USV partners + investors, since this is the USV use case.
+    pool_types = st.multiselect(
+        "Who should we consider for intros?",
+        ["partner","investor","founder"],
+        default=["partner","investor"],
+        help="These are nodes we’ll rank as potential introducers to your target."
+    )
+
+    # 3) Scoring model for edges and paths (lightweight but effective)
+    EDGE_WEIGHT = {
+        "Partner": 3.0,          # partner ↔ USV
+        "Invested in": 2.5,      # USV ↔ Company
+        "Investor": 2.2,         # Investor ↔ Company
+        "Founded by": 2.0,       # Founder ↔ Company
+        "Co‑founder": 2.0,       # (if present in your graph)
+    }
+    TYPE_BONUS = {
+        "partner": 1.5,          # prefer USV partners
+        "investor": 1.2,
+        "founder": 1.0,
+        "company": 0.8,
+    }
+
+    def path_score(path: list[str]) -> float:
+        """Higher is better: shorter paths and stronger relations → higher score."""
+        if len(path) < 2:
+            return 0.0
+        score = 0.0
+        # relationship strength
+        for u, v in zip(path, path[1:]):
+            rel = H.get_edge_data(u, v, {}).get("relation", "")
+            score += EDGE_WEIGHT.get(rel, 1.0)
+        # preference for candidate type
+        candidate_type = META[path[0]]["type"]
+        score *= TYPE_BONUS.get(candidate_type, 1.0)
+        # penalize long paths slightly
+        score -= 0.5 * (len(path) - 2)
+        return round(score, 3)
+
+    # 4) Build candidate set (visible nodes of the chosen types)
+    candidates = [n for n in H.nodes() if META[n]["type"] in pool_types and n != target_id]
+
+    # 5) Find best shortest path per candidate and rank
+    ranked = []
+    for c in candidates:
+        try:
+            sp = nx.shortest_path(H, source=c, target=target_id)
+            s = path_score(sp)
+            if s <= 0: 
+                continue
+            ranked.append((s, sp))
+        except nx.NetworkXNoPath:
+            continue
+
+    ranked.sort(key=lambda x: x[0], reverse=True)
+    top_k = st.slider("Show top N candidates", 3, 15, 7)
+
+    if not ranked:
+        st.info("No warm intro paths found with current filters. Try widening filters or depth.")
+    else:
+        show = ranked[:top_k]
+
+        # Pretty printer for a path segment reason
+        def path_reason(p: list[str]) -> str:
+            hops = []
+            for u, v in zip(p, p[1:]):
+                rel = H.get_edge_data(u, v, {}).get("relation", "")
+                hops.append(f"{META[u]['label']} —{rel}→ {META[v]['label']}")
+            return " → ".join(hops)
+
+        # Render the list
+        st.write("**Ranked intro candidates:**")
+        export_rows = []
+        for rank, (score, path_nodes) in enumerate(show, start=1):
+            cand = path_nodes[0]
+            cand_label = META[cand]["label"]
+            cand_type  = META[cand]["type"]
+
+            # human‑readable summary
+            reason = path_reason(path_nodes)
+            path_labels = " → ".join(META[n]["label"] for n in path_nodes)
+
+            st.markdown(f"**{rank}. {cand_label}**  <sub>`{cand_type}`</sub> — score **{score}**", unsafe_allow_html=True)
+            st.caption(reason)
+
+            # quick email draft (copy/paste)
+            with st.expander("Email draft"):
+                target_label = META[target_id]["label"]
+                st.write(
+                    f"Subject: Quick intro to {target_label}?\n\n"
+                    f"Hi {{FirstName}},\n\n"
+                    f"Hope you’re well. We’re looking to connect with **{target_label}** and noticed you’re connected via "
+                    f"**{path_labels}**. If you’re open to it, a brief intro would be amazing—happy to send a blurb.\n\n"
+                    f"Thanks!\n"
+                )
+
+            export_rows.append({
+                "rank": rank,
+                "candidate": cand_label,
+                "candidate_type": cand_type,
+                "score": score,
+                "path": path_labels,
+                "reason": reason
+            })
+
+        # CSV export
+        csv_buf = StringIO()
+        writer = csv.DictWriter(csv_buf, fieldnames=list(export_rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(export_rows)
+        st.download_button("Download warm‑intro hit list (CSV)", csv_buf.getvalue(), file_name="warm_intro_ranked.csv", use_container_width=True)
 # ---------------- Export ----------------
 payload = {
     "nodes": {n: {"label": META[n]["label"], "type": META[n]["type"], "url": META[n].get("url","")} for n in H.nodes()},
