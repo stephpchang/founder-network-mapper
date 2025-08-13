@@ -17,85 +17,139 @@ from pyvis.network import Network
 # -------------------------------------------------
 st.set_page_config(page_title="Founder Network Mapper", layout="wide")
 st.title("Founder Network Mapper")
-st.caption("Demo-friendly: curated Demo Mode, Focus on node, Warm Intro Paths, optional web augmentation")
+st.caption("Demo mode + USV portfolio, Focus on node, Warm Intro Paths, optional web augmentation")
 
-# -------------------------------------------------
-# Demo data (curated so you can show functionality without paid APIs)
-# Added: USV + partners connected to USV
-# -------------------------------------------------
+# =================================================
+# DEMO DATA (curated; no paid APIs required)
+# =================================================
+# Nodes: {id, label, type in {company, founder, investor, partner}, url}
+# Edges: {u, v, relation}
 DEMO_GRAPH = {
     "nodes": [
-        # Companies
-        {"id": "company::anthropic", "label": "Anthropic", "type": "company", "url": "https://www.anthropic.com/"},
-        {"id": "company::figma",     "label": "Figma",     "type": "company", "url": "https://www.figma.com/"},
-        {"id": "company::plaid",     "label": "Plaid",     "type": "company", "url": "https://plaid.com/"},
+        # --- Investor: USV + partners ---
+        {"id": "investor::usv", "label": "Union Square Ventures", "type": "investor", "url": "https://www.usv.com/"},
+        {"id": "partner::fred_wilson",   "label": "Fred Wilson",   "type": "partner",  "url": "https://www.usv.com/team/fred-wilson/"},
+        {"id": "partner::albert_wenger", "label": "Albert Wenger", "type": "partner",  "url": "https://www.usv.com/team/albert-wenger/"},
+        {"id": "partner::rebecca_kaden", "label": "Rebecca Kaden", "type": "partner",  "url": "https://www.usv.com/team/rebecca-kaden/"},
+        {"id": "partner::nick_grossman", "label": "Nick Grossman", "type": "partner",  "url": "https://www.usv.com/team/nick-grossman/"},
+        {"id": "partner::andy_weissman", "label": "Andy Weissman", "type": "partner",  "url": "https://www.usv.com/team/andy-weissman/"},
 
-        # Founders
-        {"id": "founder::dario_amodei",   "label": "Dario Amodei",   "type": "founder", "url": "https://en.wikipedia.org/wiki/Anthropic"},
-        {"id": "founder::daniela_amodei", "label": "Daniela Amodei", "type": "founder", "url": "https://en.wikipedia.org/wiki/Anthropic"},
-        {"id": "founder::dylan_field",    "label": "Dylan Field",    "type": "founder", "url": "https://en.wikipedia.org/wiki/Dylan_Field"},
-        {"id": "founder::evan_wallace",   "label": "Evan Wallace",   "type": "founder", "url": "https://www.figma.com/blog/"},
-        {"id": "founder::zach_perret",    "label": "Zach Perret",    "type": "founder", "url": "https://en.wikipedia.org/wiki/Plaid_(company)"},
-        {"id": "founder::william_hockey", "label": "William Hockey", "type": "founder", "url": "https://en.wikipedia.org/wiki/Plaid_(company)"},
+        # --- USV portfolio (representative) + founders ---
+        # Etsy
+        {"id": "company::etsy", "label": "Etsy", "type": "company", "url": "https://www.etsy.com/"},
+        {"id": "founder::rob_kalin", "label": "Rob Kalin", "type": "founder", "url": "https://en.wikipedia.org/wiki/Etsy"},
+        {"id": "founder::chris_maguire", "label": "Chris Maguire", "type": "founder", "url": "https://en.wikipedia.org/wiki/Etsy"},
+        {"id": "founder::haim_schoppik", "label": "Haim Schoppik", "type": "founder", "url": "https://en.wikipedia.org/wiki/Etsy"},
 
-        # Investors (sample)
-        {"id": "investor::spark_capital", "label": "Spark Capital", "type": "investor", "url": "https://www.sparkcapital.com/"},
-        {"id": "investor::sequoia",       "label": "Sequoia Capital", "type": "investor", "url": "https://www.sequoiacap.com/"},
-        {"id": "investor::a16z",          "label": "Andreessen Horowitz", "type": "investor", "url": "https://a16z.com/"},
-        {"id": "investor::iconiq",        "label": "ICONIQ Capital", "type": "investor", "url": "https://www.iconiqcapital.com/"},
-        {"id": "investor::index",         "label": "Index Ventures", "type": "investor", "url": "https://www.indexventures.com/"},
+        # Twitter (X)
+        {"id": "company::twitter", "label": "Twitter (X)", "type": "company", "url": "https://x.com/"},
+        {"id": "founder::jack_dorsey", "label": "Jack Dorsey", "type": "founder", "url": "https://en.wikipedia.org/wiki/Jack_Dorsey"},
+        {"id": "founder::biz_stone", "label": "Biz Stone", "type": "founder", "url": "https://en.wikipedia.org/wiki/Biz_Stone"},
+        {"id": "founder::ev_williams", "label": "Evan Williams", "type": "founder", "url": "https://en.wikipedia.org/wiki/Evan_Williams_(Internet_entrepreneur)"},
+        {"id": "founder::noah_glass", "label": "Noah Glass", "type": "founder", "url": "https://en.wikipedia.org/wiki/Noah_Glass"},
 
-        # USV + partners
-        {"id": "investor::usv",           "label": "Union Square Ventures", "type": "investor", "url": "https://www.usv.com/"},
-        {"id": "partner::fred_wilson",    "label": "Fred Wilson",   "type": "partner", "url": "https://www.usv.com/team/fred-wilson/"},
-        {"id": "partner::albert_wenger",  "label": "Albert Wenger", "type": "partner", "url": "https://www.usv.com/team/albert-wenger/"},
-        {"id": "partner::rebecca_kaden",  "label": "Rebecca Kaden", "type": "partner", "url": "https://www.usv.com/team/rebecca-kaden/"},
-        {"id": "partner::nick_grossman",  "label": "Nick Grossman", "type": "partner", "url": "https://www.usv.com/team/nick-grossman/"},
-        {"id": "partner::andy_weissman",  "label": "Andy Weissman", "type": "partner", "url": "https://www.usv.com/team/andy-weissman/"},
+        # Coinbase
+        {"id": "company::coinbase", "label": "Coinbase", "type": "company", "url": "https://www.coinbase.com/"},
+        {"id": "founder::brian_armstrong", "label": "Brian Armstrong", "type": "founder", "url": "https://en.wikipedia.org/wiki/Brian_Armstrong"},
+        {"id": "founder::fred_ehrsam", "label": "Fred Ehrsam", "type": "founder", "url": "https://en.wikipedia.org/wiki/Fred_Ehrsam"},
+
+        # Duolingo
+        {"id": "company::duolingo", "label": "Duolingo", "type": "company", "url": "https://www.duolingo.com/"},
+        {"id": "founder::luis_von_ahn", "label": "Luis von Ahn", "type": "founder", "url": "https://en.wikipedia.org/wiki/Luis_von_Ahn"},
+        {"id": "founder::severin_hacker", "label": "Severin Hacker", "type": "founder", "url": "https://en.wikipedia.org/wiki/Severin_Hacker"},
+
+        # Kickstarter
+        {"id": "company::kickstarter", "label": "Kickstarter", "type": "company", "url": "https://www.kickstarter.com/"},
+        {"id": "founder::perry_chen", "label": "Perry Chen", "type": "founder", "url": "https://en.wikipedia.org/wiki/Kickstarter"},
+        {"id": "founder::yancey_strickler", "label": "Yancey Strickler", "type": "founder", "url": "https://en.wikipedia.org/wiki/Yancey_Strickler"},
+        {"id": "founder::charles_adler", "label": "Charles Adler", "type": "founder", "url": "https://en.wikipedia.org/wiki/Charles_Adler_(entrepreneur)"},
+
+        # Tumblr
+        {"id": "company::tumblr", "label": "Tumblr", "type": "company", "url": "https://www.tumblr.com/"},
+        {"id": "founder::david_karp", "label": "David Karp", "type": "founder", "url": "https://en.wikipedia.org/wiki/David_Karp"},
+
+        # Foursquare
+        {"id": "company::foursquare", "label": "Foursquare", "type": "company", "url": "https://foursquare.com/"},
+        {"id": "founder::dennis_crowley", "label": "Dennis Crowley", "type": "founder", "url": "https://en.wikipedia.org/wiki/Dennis_Crowley"},
+        {"id": "founder::naveen_selvadurai", "label": "Naveen Selvadurai", "type": "founder", "url": "https://en.wikipedia.org/wiki/Naveen_Selvadurai"},
+
+        # SoundCloud
+        {"id": "company::soundcloud", "label": "SoundCloud", "type": "company", "url": "https://soundcloud.com/"},
+        {"id": "founder::alexander_ljung", "label": "Alexander Ljung", "type": "founder", "url": "https://en.wikipedia.org/wiki/SoundCloud"},
+        {"id": "founder::eric_wahlforss", "label": "Eric Wahlforss", "type": "founder", "url": "https://en.wikipedia.org/wiki/SoundCloud"},
+
+        # Keep earlier sample investors so the map looks rich
+        {"id": "investor::sequoia", "label": "Sequoia Capital", "type": "investor", "url": "https://www.sequoiacap.com/"},
+        {"id": "investor::a16z",    "label": "Andreessen Horowitz", "type": "investor", "url": "https://a16z.com/"},
+        {"id": "investor::iconiq",  "label": "ICONIQ Capital", "type": "investor", "url": "https://www.iconiqcapital.com/"},
     ],
     "edges": [
-        # Founder -> Company
-        {"u": "founder::dario_amodei",   "v": "company::anthropic", "relation": "Co‑founder"},
-        {"u": "founder::daniela_amodei", "v": "company::anthropic", "relation": "Co‑founder"},
-        {"u": "founder::dylan_field",    "v": "company::figma",     "relation": "Co‑founder"},
-        {"u": "founder::evan_wallace",   "v": "company::figma",     "relation": "Co‑founder"},
-        {"u": "founder::zach_perret",    "v": "company::plaid",     "relation": "Co‑founder"},
-        {"u": "founder::william_hockey", "v": "company::plaid",     "relation": "Co‑founder"},
-
-        # Investor -> Company (illustrative only)
-        {"u": "investor::spark_capital", "v": "company::anthropic", "relation": "Investor"},
-        {"u": "investor::sequoia",       "v": "company::figma",     "relation": "Investor"},
-        {"u": "investor::a16z",          "v": "company::figma",     "relation": "Investor"},
-        {"u": "investor::iconiq",        "v": "company::figma",     "relation": "Investor"},
-        {"u": "investor::index",         "v": "company::plaid",     "relation": "Investor"},
-
-        # Partners -> USV
+        # USV partners -> USV
         {"u": "partner::fred_wilson",    "v": "investor::usv", "relation": "Partner"},
         {"u": "partner::albert_wenger",  "v": "investor::usv", "relation": "Partner"},
         {"u": "partner::rebecca_kaden",  "v": "investor::usv", "relation": "Partner"},
         {"u": "partner::nick_grossman",  "v": "investor::usv", "relation": "Partner"},
         {"u": "partner::andy_weissman",  "v": "investor::usv", "relation": "Partner"},
+
+        # USV -> portfolio
+        {"u": "investor::usv", "v": "company::etsy",        "relation": "Invested in"},
+        {"u": "investor::usv", "v": "company::twitter",     "relation": "Invested in"},
+        {"u": "investor::usv", "v": "company::coinbase",    "relation": "Invested in"},
+        {"u": "investor::usv", "v": "company::duolingo",    "relation": "Invested in"},
+        {"u": "investor::usv", "v": "company::kickstarter", "relation": "Invested in"},
+        {"u": "investor::usv", "v": "company::tumblr",      "relation": "Invested in"},
+        {"u": "investor::usv", "v": "company::foursquare",  "relation": "Invested in"},
+        {"u": "investor::usv", "v": "company::soundcloud",  "relation": "Invested in"},
+
+        # Companies -> founders
+        {"u": "company::etsy",        "v": "founder::rob_kalin",        "relation": "Founded by"},
+        {"u": "company::etsy",        "v": "founder::chris_maguire",    "relation": "Founded by"},
+        {"u": "company::etsy",        "v": "founder::haim_schoppik",    "relation": "Founded by"},
+
+        {"u": "company::twitter",     "v": "founder::jack_dorsey",      "relation": "Founded by"},
+        {"u": "company::twitter",     "v": "founder::biz_stone",        "relation": "Founded by"},
+        {"u": "company::twitter",     "v": "founder::ev_williams",      "relation": "Founded by"},
+        {"u": "company::twitter",     "v": "founder::noah_glass",       "relation": "Founded by"},
+
+        {"u": "company::coinbase",    "v": "founder::brian_armstrong",  "relation": "Founded by"},
+        {"u": "company::coinbase",    "v": "founder::fred_ehrsam",      "relation": "Founded by"},
+
+        {"u": "company::duolingo",    "v": "founder::luis_von_ahn",     "relation": "Founded by"},
+        {"u": "company::duolingo",    "v": "founder::severin_hacker",   "relation": "Founded by"},
+
+        {"u": "company::kickstarter", "v": "founder::perry_chen",       "relation": "Founded by"},
+        {"u": "company::kickstarter", "v": "founder::yancey_strickler", "relation": "Founded by"},
+        {"u": "company::kickstarter", "v": "founder::charles_adler",    "relation": "Founded by"},
+
+        {"u": "company::tumblr",      "v": "founder::david_karp",       "relation": "Founded by"},
+
+        {"u": "company::foursquare",  "v": "founder::dennis_crowley",   "relation": "Founded by"},
+        {"u": "company::foursquare",  "v": "founder::naveen_selvadurai","relation": "Founded by"},
+
+        {"u": "company::soundcloud",  "v": "founder::alexander_ljung",  "relation": "Founded by"},
+        {"u": "company::soundcloud",  "v": "founder::eric_wahlforss",   "relation": "Founded by"},
+
+        # Sample other investors to keep graph lively (optional)
+        {"u": "investor::sequoia", "v": "company::twitter",  "relation": "Investor"},
+        {"u": "investor::a16z",    "v": "company::coinbase", "relation": "Investor"},
+        {"u": "investor::iconiq",  "v": "company::duolingo", "relation": "Investor"},
     ],
     "sources": {
-        "company::anthropic": [
-            "https://www.anthropic.com/",
-            "https://en.wikipedia.org/wiki/Anthropic"
-        ],
-        "company::figma": [
-            "https://www.figma.com/",
-            "https://en.wikipedia.org/wiki/Figma"
-        ],
-        "company::plaid": [
-            "https://plaid.com/",
-            "https://en.wikipedia.org/wiki/Plaid_(company)"
-        ],
-        "investor::usv": ["https://www.usv.com/team/"]
+        "investor::usv": ["https://www.usv.com/team/"],
+        "company::etsy": ["https://www.usv.com/portfolio/etsy/", "https://en.wikipedia.org/wiki/Etsy"],
+        "company::twitter": ["https://www.usv.com/portfolio/twitter/", "https://en.wikipedia.org/wiki/Twitter"],
+        "company::coinbase": ["https://www.usv.com/portfolio/coinbase/", "https://en.wikipedia.org/wiki/Coinbase"],
+        "company::duolingo": ["https://www.usv.com/portfolio/duolingo/", "https://en.wikipedia.org/wiki/Duolingo"],
+        "company::kickstarter": ["https://www.usv.com/portfolio/kickstarter/", "https://en.wikipedia.org/wiki/Kickstarter"],
+        "company::tumblr": ["https://www.usv.com/portfolio/tumblr/", "https://en.wikipedia.org/wiki/Tumblr"],
+        "company::foursquare": ["https://www.usv.com/portfolio/foursquare/", "https://en.wikipedia.org/wiki/Foursquare"],
+        "company::soundcloud": ["https://www.usv.com/portfolio/soundcloud/", "https://en.wikipedia.org/wiki/SoundCloud"]
     }
 }
 
-# -------------------------------------------------
-# Cached Google CSE (optional augmentation)
-# -------------------------------------------------
+# =================================================
+# Optional Google CSE augmentation (public web only)
+# =================================================
 @st.cache_data(show_spinner=False, ttl=86400)
 def serp(q: str, num: int = 5) -> List[Dict[str, str]]:
     cx = os.getenv("GOOGLE_CSE_ID")
@@ -119,9 +173,9 @@ def serp(q: str, num: int = 5) -> List[Dict[str, str]]:
              "snippet": it.get("snippet",""),
              "link": it.get("link","")} for it in items[:num]]
 
-# -------------------------------------------------
-# Lightweight parsing (heuristics)
-# -------------------------------------------------
+# =================================================
+# Lightweight parsing (heuristics for web augmentation)
+# =================================================
 VC_KEYWORDS = r"(Capital|Ventures?|Partners?|Fund|Holdings|Management|Investments?)"
 LED_BY = re.compile(r"\bled by ([^.;\n]+)", re.I)
 INV_LISTY = re.compile(rf"\b([A-Z][\w&'.-]+(?:\s+[A-Z][\w&'.-]+)*)\s+(?:{VC_KEYWORDS})\b", re.I)
@@ -186,21 +240,25 @@ def extract_investors(snips: List[Dict[str, str]]) -> List[Tuple[str,str]]:
         seen.add(k); uniq.append((n,u))
     return uniq[:20]
 
-# -------------------------------------------------
-# Build graphs
-# -------------------------------------------------
+# =================================================
+# Graph builders
+# =================================================
 def build_graph_from_demo() -> Tuple[nx.Graph, Dict[str, Dict[str,Any]], Dict[str, Set[str]]]:
     G = nx.Graph()
-    meta = {}
+    meta: Dict[str, Dict[str,Any]] = {}
     sources_by_node: Dict[str, Set[str]] = defaultdict(set)
+
     for n in DEMO_GRAPH["nodes"]:
         meta[n["id"]] = {"type": n["type"], "label": n["label"], "url": n.get("url","")}
         G.add_node(n["id"])
+
     for e in DEMO_GRAPH["edges"]:
         G.add_edge(e["u"], e["v"], relation=e.get("relation",""))
+
     for nid, urls in (DEMO_GRAPH.get("sources") or {}).items():
         for u in urls:
             sources_by_node[nid].add(u)
+
     return G, meta, sources_by_node
 
 def build_graph_from_serp(companies: List[str]) -> Tuple[nx.Graph, Dict[str, Dict[str,Any]], Dict[str, Set[str]]]:
@@ -240,44 +298,14 @@ def build_graph_from_serp(companies: List[str]) -> Tuple[nx.Graph, Dict[str, Dic
             if iid not in meta:
                 meta[iid] = {"type":"investor","label":inv,"url": url}
                 G.add_node(iid)
-            G.add_edge(iid, cid, relation="invested")
+            G.add_edge(iid, cid, relation="Investor")
             if url: sources_by_node[iid].add(url)
 
     return G, meta, sources_by_node
 
-# -------------------------------------------------
-# Insights
-# -------------------------------------------------
-def compute_insights(G: nx.Graph, meta: Dict[str, Dict[str,Any]]) -> Dict[str, Any]:
-    deg = {nid: G.degree(nid) for nid in G.nodes()}
-    top_nodes = sorted(deg.items(), key=lambda kv: kv[1], reverse=True)[:5]
-    top = [{"label": meta[n]["label"], "type": meta[n]["type"], "degree": d} for n, d in top_nodes]
-
-    comp_investors: Dict[str, Set[str]] = defaultdict(set)
-    for nid, attrs in meta.items():
-        if attrs["type"] != "investor":
-            continue
-        for nb in G.neighbors(nid):
-            if meta[nb]["type"] == "company":
-                comp_investors[nb].add(nid)
-
-    shared_list = []
-    companies = [nid for nid, a in meta.items() if a["type"] == "company"]
-    for i in range(len(companies)):
-        for j in range(i+1, len(companies)):
-            a, b = companies[i], companies[j]
-            shared = comp_investors[a].intersection(comp_investors[b])
-            if shared:
-                shared_list.append({
-                    "companies": (meta[a]["label"], meta[b]["label"]),
-                    "shared_investors": [meta[s]["label"] for s in shared]
-                })
-
-    return {"top_connectors": top, "shared_investors": shared_list}
-
-# -------------------------------------------------
+# =================================================
 # Viz
-# -------------------------------------------------
+# =================================================
 def render_pyvis(G: nx.Graph, meta: Dict[str, Dict[str,Any]], height: str = "700px",
                  highlight_nodes: Set[str] | None = None, highlight_edges: Set[Tuple[str,str]] | None = None) -> str:
     net = Network(height=height, width="100%", bgcolor="#ffffff", font_color="#222")
@@ -305,14 +333,31 @@ def render_pyvis(G: nx.Graph, meta: Dict[str, Dict[str,Any]], height: str = "700
     net.toggle_physics(True)
     return net.generate_html("graph.html")
 
-# -------------------------------------------------
-# UI
-# -------------------------------------------------
+# =================================================
+# Session helpers (prevents “reset to homepage”)
+# =================================================
+def save_graph_to_session(G, meta, sources):
+    st.session_state["_graph"] = G
+    st.session_state["_meta"] = meta
+    st.session_state["_sources"] = sources
+    # Build stable selector labels across reruns
+    label_to_id = { f"{meta[n]['label']} ({meta[n]['type']})": n for n in G.nodes() }
+    st.session_state["_label_to_id"] = dict(sorted(label_to_id.items(), key=lambda kv: kv[0].lower()))
+
+def load_graph_from_session():
+    return (st.session_state.get("_graph"),
+            st.session_state.get("_meta"),
+            st.session_state.get("_sources"),
+            st.session_state.get("_label_to_id"))
+
+# =================================================
+# UI – top form builds or rebuilds the graph
+# =================================================
 with st.form("input"):
     demo_mode = st.checkbox("Use Demo Mode (no web lookups)", value=True)
-    companies_raw = st.text_input("Enter up to 5 companies (comma separated)", value="Anthropic, Figma, Plaid")
+    companies_raw = st.text_input("Enter up to 5 companies (comma separated)", value="Etsy, Twitter, Coinbase")
     augment = st.checkbox("Augment demo with public web signals (uses your Google CSE quota)", value=False, disabled=not demo_mode)
-    submitted = st.form_submit_button("Build network")
+    submitted = st.form_submit_button("Build / Rebuild network")
 
 if submitted:
     companies = [c.strip() for c in companies_raw.split(",") if c.strip()][:5]
@@ -321,8 +366,8 @@ if submitted:
     else:
         with st.spinner("Building graph..."):
             if demo_mode:
-                G, meta, sources_by_node = build_graph_from_demo()
-                # keep only typed companies and their neighbors, plus USV and its partners so demo always shows them
+                G, meta, sources = build_graph_from_demo()
+                # Keep USV + partners always; also keep typed companies and their neighbors
                 keep_companies = {f"company::{c.lower()}" for c in companies}
                 usv_block = {"investor::usv", "partner::fred_wilson","partner::albert_wenger",
                              "partner::rebecca_kaden","partner::nick_grossman","partner::andy_weissman"}
@@ -332,7 +377,7 @@ if submitted:
                         to_keep.add(nid)
                 G = G.subgraph(list(to_keep)).copy()
                 meta = {nid: meta[nid] for nid in G.nodes()}
-                sources_by_node = {nid: set(sources_by_node.get(nid, set())) for nid in G.nodes()}
+                sources = {nid: set(sources.get(nid, set())) for nid in G.nodes()}
                 if augment:
                     G2, meta2, src2 = build_graph_from_serp(companies)
                     for nid, attrs in meta2.items():
@@ -343,133 +388,126 @@ if submitted:
                         if not G.has_edge(u, v):
                             G.add_edge(u, v, **d)
                     for nid, urls in src2.items():
-                        sources_by_node.setdefault(nid, set()).update(urls)
+                        sources.setdefault(nid, set()).update(urls)
             else:
-                G, meta, sources_by_node = build_graph_from_serp(companies)
+                companies = [c.strip() for c in companies_raw.split(",") if c.strip()][:5]
+                G, meta, sources = build_graph_from_serp(companies)
 
-        # ---------- Sidebar controls ----------
-        st.sidebar.header("Filters")
-        typ_filter = st.sidebar.multiselect("Node types", ["founder","company","investor","partner"],
-                                            default=["founder","company","investor","partner"])
-        query = st.sidebar.text_input("Search name contains", value="")
+        save_graph_to_session(G, meta, sources)
 
-        # Build stable selector labels to avoid crashes when nodes are filtered
-        def _display_label(nid: str) -> str:
-            a = meta[nid]
-            return f"{a['label']} ({a['type']})"
+# If we don’t have a built graph yet, show instructions and exit.
+G, META, SOURCES, LABEL2ID = load_graph_from_session()
+if G is None or META is None or SOURCES is None or LABEL2ID is None:
+    st.info("Build the network first (Demo Mode works instantly). Then use the sidebar to focus on nodes or find warm intro paths.")
+    st.stop()
 
-        all_options = sorted([_display_label(nid) for nid in G.nodes()], key=lambda s: s.lower())
-        label_to_id = { _display_label(nid): nid for nid in G.nodes() }
+# =================================================
+# Sidebar controls (safe across reruns)
+# =================================================
+st.sidebar.header("Filters")
+typ_filter = st.sidebar.multiselect("Node types", ["founder","company","investor","partner"],
+                                    default=["founder","company","investor","partner"])
+query = st.sidebar.text_input("Search name contains", value="")
 
-        # Focus on node (ego network)
-        st.sidebar.header("Focus")
-        focus_display = st.sidebar.selectbox("Focus on node", ["(none)"] + all_options, index=0, key="focus_select")
-        focus_depth = st.sidebar.slider("Depth (hops)", min_value=1, max_value=2, value=1, key="focus_depth")
-        apply_focus = st.sidebar.checkbox("Apply focus", value=False, key="apply_focus")
+st.sidebar.header("Focus")
+focus_display = st.sidebar.selectbox("Focus on node", ["(none)"] + list(LABEL2ID.keys()), index=0, key="focus_select")
+focus_depth = st.sidebar.slider("Depth (hops)", min_value=1, max_value=2, value=1, key="focus_depth")
+apply_focus = st.sidebar.checkbox("Apply focus", value=False, key="apply_focus")
 
-        # Warm intro path
-        st.sidebar.header("Warm Intro Path")
-        start_display = st.sidebar.selectbox("From", ["(pick)"] + all_options, index=0, key="path_from")
-        end_display   = st.sidebar.selectbox("To",   ["(pick)"] + all_options, index=0, key="path_to")
-        find_path = st.sidebar.button("Find shortest path")
+st.sidebar.header("Warm Intro Path")
+start_display = st.sidebar.selectbox("From", ["(pick)"] + list(LABEL2ID.keys()), index=0, key="path_from")
+end_display   = st.sidebar.selectbox("To",   ["(pick)"] + list(LABEL2ID.keys()), index=0, key="path_to")
+find_path = st.sidebar.button("Find shortest path")
 
-        # ---------- Filtering ----------
-        query_l = (query or "").lower().strip()
-        visible = []
-        for nid, attrs in meta.items():
-            if nid not in G:
-                continue
-            if attrs["type"] not in typ_filter:
-                continue
-            if query_l and query_l not in attrs["label"].lower():
-                continue
-            visible.append(nid)
-        H = G.subgraph(visible).copy()
+# =================================================
+# Apply filters/focus safely (no homepage resets)
+# =================================================
+query_l = (query or "").lower().strip()
+visible = []
+for nid, attrs in META.items():
+    if nid not in G:
+        continue
+    if attrs["type"] not in typ_filter:
+        continue
+    if query_l and query_l not in attrs["label"].lower():
+        continue
+    visible.append(nid)
+H = G.subgraph(visible).copy()
 
-        # Safety: if empty after filters, show message instead of crashing to homepage
-        if H.number_of_nodes() == 0:
-            st.info("No nodes match the current filters/focus. Clear filters or pick another node.")
-            st.stop()
+if H.number_of_nodes() == 0:
+    st.info("No nodes match the current filters. Clear filters or pick another node.")
+    st.stop()
 
-        # Apply focus (ego network) with safeguards
-        highlighted_nodes: Set[str] = set()
-        highlighted_edges: Set[Tuple[str,str]] = set()
-        if apply_focus and focus_display != "(none)":
-            fid = label_to_id.get(focus_display)
-            if fid in H:
-                ego_nodes = nx.ego_graph(H, fid, radius=focus_depth).nodes()
-                H = H.subgraph(list(ego_nodes)).copy()
-                highlighted_nodes = set(H.nodes())
-                if H.number_of_nodes() == 0:
-                    st.info("Focused node is filtered out by current filters.")
-            else:
-                st.info("Focused node is not in the current filtered view. Adjust filters or turn off focus.")
+highlighted_nodes: Set[str] = set()
+highlighted_edges: Set[Tuple[str,str]] = set()
 
-        # Warm intro path (shortest path) with safeguards
-        path_nodes: List[str] = []
-        if find_path and start_display != "(pick)" and end_display != "(pick)":
-            sid = label_to_id.get(start_display)
-            tid = label_to_id.get(end_display)
-            if sid in H and tid in H:
-                try:
-                    path_nodes = nx.shortest_path(H, source=sid, target=tid)
-                    for u, v in zip(path_nodes, path_nodes[1:]):
-                        highlighted_edges.add((u, v))
-                    highlighted_nodes.update(path_nodes)
-                except nx.NetworkXNoPath:
-                    st.warning("No connection found between the selected nodes in the current view.")
-            else:
-                st.warning("One or both selected nodes are not visible under current filters.")
+# Focus (ego network)
+if apply_focus and focus_display != "(none)":
+    fid = LABEL2ID.get(focus_display)
+    if fid in H:
+        ego_nodes = nx.ego_graph(H, fid, radius=focus_depth).nodes()
+        H = H.subgraph(list(ego_nodes)).copy()
+        highlighted_nodes = set(H.nodes())
+    else:
+        st.info("Focused node is not visible under current filters.")
 
-        # ---------- Render main graph ----------
-        html = render_pyvis(H, {nid: meta[nid] for nid in H.nodes()},
-                            highlight_nodes=highlighted_nodes,
-                            highlight_edges=highlighted_edges)
-        st.components.v1.html(html, height=720, scrolling=True)
+# Warm intro path
+path_nodes: List[str] = []
+if find_path and start_display != "(pick)" and end_display != "(pick)":
+    sid = LABEL2ID.get(start_display)
+    tid = LABEL2ID.get(end_display)
+    if sid in H and tid in H:
+        try:
+            path_nodes = nx.shortest_path(H, source=sid, target=tid)
+            for u, v in zip(path_nodes, path_nodes[1:]):
+                highlighted_edges.add((u, v))
+            highlighted_nodes.update(path_nodes)
+        except nx.NetworkXNoPath:
+            st.warning("No connection found between the selected nodes in the current view.")
+    else:
+        st.warning("One or both selected nodes are filtered out. Adjust filters or turn off focus.")
 
-        # Path explanation
-        if path_nodes:
-            st.markdown("### Warm Intro Path")
-            st.write(" → ".join(meta[n]["label"] for n in path_nodes))
+# =================================================
+# Render graph
+# =================================================
+html = render_pyvis(H, {nid: META[nid] for nid in H.nodes()},
+                    highlight_nodes=highlighted_nodes,
+                    highlight_edges=highlighted_edges)
+st.components.v1.html(html, height=720, scrolling=True)
 
-        # Insights
-        st.markdown("### Insights")
-        insights = compute_insights(H, meta)
-        top = insights["top_connectors"]
-        if top:
-            st.write("Most connected in this view:")
-            for t in top:
-                st.write(f"- {t['label']} ({t['type']}) — {t['degree']} connections")
-        shared = insights["shared_investors"]
-        if shared:
-            st.write("Shared investors between companies:")
-            for item in shared:
-                a, b = item["companies"]
-                st.write(f"- {a} ↔ {b}: " + ", ".join(item["shared_investors"][:6]))
+# Path explanation
+if path_nodes:
+    st.markdown("### Warm Intro Path")
+    st.write(" → ".join(META[n]["label"] for n in path_nodes))
 
-        # Sources
-        st.markdown("### Sources")
-        for nid in H.nodes():
-            urls = sorted(list(sources_by_node.get(nid, [])))
-            if not urls:
-                continue
-            label = meta[nid]["label"]
-            ntype = meta[nid]["type"]
-            st.markdown(f"**{label}**  <sub>`{ntype}`</sub>", unsafe_allow_html=True)
-            for u in urls:
-                st.write(f"- [{urlparse(u).netloc}]({u})")
+# Insights
+st.markdown("### Insights")
+deg = {nid: H.degree(nid) for nid in H.nodes()}
+top_nodes = sorted(deg.items(), key=lambda kv: kv[1], reverse=True)[:5]
+if top_nodes:
+    st.write("Most connected in this view:")
+    for nid, d in top_nodes:
+        st.write(f"- {META[nid]['label']} ({META[nid]['type']}) — {d} connections")
 
-        # Export JSON
-        payload = {
-            "companies": companies,
-            "nodes": {nid: {"label": meta[nid]["label"], "type": meta[nid]["type"], "url": meta[nid].get("url","")}
-                      for nid in H.nodes()},
-            "edges": [{"u": u, "v": v, "relation": G.get_edge_data(u,v).get("relation","")} for u,v in H.edges()],
-            "sources": {nid: sorted(list(sources_by_node.get(nid, []))) for nid in H.nodes()},
-        }
-        st.download_button("Download graph JSON", json.dumps(payload, indent=2), file_name="founder_network.json", use_container_width=True)
+# Sources
+st.markdown("### Sources")
+for nid in H.nodes():
+    urls = sorted(list(SOURCES.get(nid, [])))
+    if not urls:
+        continue
+    label = META[nid]["label"]
+    ntype = META[nid]["type"]
+    st.markdown(f"**{label}**  <sub>`{ntype}`</sub>", unsafe_allow_html=True)
+    for u in urls:
+        st.write(f"- [{urlparse(u).netloc}]({u})")
 
-else:
-    st.info("Toggle **Demo Mode** to show functionality instantly, or type up to 5 company names and build the network from public web snippets.")
+# Export JSON
+payload = {
+    "nodes": {nid: {"label": META[nid]["label"], "type": META[nid]["type"], "url": META[nid].get("url","")}
+              for nid in H.nodes()},
+    "edges": [{"u": u, "v": v, "relation": G.get_edge_data(u,v).get("relation","")} for u,v in H.edges()],
+    "sources": {nid: sorted(list(SOURCES.get(nid, []))) for nid in H.nodes()},
+}
+st.download_button("Download graph JSON", json.dumps(payload, indent=2), file_name="founder_network.json", use_container_width=True)
 
-st.caption("Note: Demo mode uses curated sample data. Web-augmented mode uses heuristics from public sources.")
+st.caption("Note: Demo mode uses curated data. Web augmentation uses public SERP heuristics; verify before use.")
